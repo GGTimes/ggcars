@@ -67,9 +67,11 @@ export async function openCycle(input: {
   userId: string
   title: string
   amount: bigint
+  receiptNumber?: string | null
 }) {
   const title = requiredText(input.title, messages.cycleTitle, 80)
   guard(() => assertPositive(input.amount))
+  const receiptNumber = cleanOptional(input.receiptNumber)
 
   try {
     return await prisma.$transaction(async (tx) => {
@@ -88,6 +90,7 @@ export async function openCycle(input: {
             create: {
               kind: 'INITIAL',
               amount: toDecimal(input.amount),
+              receiptNumber,
               createdById: input.userId,
             },
           },
@@ -111,9 +114,11 @@ export async function addExtraMoney(input: {
   cycleId: string
   amount: bigint
   note?: string | null
+  receiptNumber?: string | null
 }) {
   guard(() => assertPositive(input.amount))
   const note = cleanOptional(input.note)
+  const receiptNumber = cleanOptional(input.receiptNumber)
 
   return prisma.$transaction(async (tx) => {
     await lockOpenCycle(tx, input.cycleId)
@@ -123,6 +128,7 @@ export async function addExtraMoney(input: {
         kind: 'EXTRA',
         amount: toDecimal(input.amount),
         note,
+        receiptNumber,
         createdById: input.userId,
       },
     })
@@ -140,6 +146,7 @@ export async function buyCar(input: {
   purchasePrice: bigint
   purchasedAt: Date
   note?: string | null
+  receiptNumber?: string | null
 }) {
   const title = requiredText(input.title, messages.carTitle, 120)
   guard(() => assertPositive(input.purchasePrice))
@@ -150,6 +157,7 @@ export async function buyCar(input: {
   const color = cleanOptional(input.color)
   const plate = cleanOptional(input.plate)
   const note = cleanOptional(input.note)
+  const receiptNumber = cleanOptional(input.receiptNumber)
 
   return prisma.$transaction(async (tx) => {
     await lockOpenCycle(tx, input.cycleId)
@@ -164,6 +172,7 @@ export async function buyCar(input: {
         plate,
         purchasePrice: toDecimal(input.purchasePrice),
         purchasedAt: input.purchasedAt,
+        purchaseReceiptNumber: receiptNumber,
         note,
         boughtById: input.userId,
       },
@@ -179,6 +188,7 @@ export async function addCost(input: {
   amount: bigint
   description: string
   spentAt: Date
+  receiptNumber?: string | null
 }) {
   if (!categories.has(input.category))
     throw new LedgerError(messages.invalidCategory)
@@ -189,6 +199,7 @@ export async function addCost(input: {
   )
   guard(() => assertPositive(input.amount))
   assertDate(input.spentAt)
+  const receiptNumber = cleanOptional(input.receiptNumber)
 
   return prisma.$transaction(async (tx) => {
     const car = await tx.car.findUnique({
@@ -208,6 +219,7 @@ export async function addCost(input: {
         category: input.category,
         amount: toDecimal(input.amount),
         description,
+        receiptNumber,
         spentAt: input.spentAt,
         createdById: input.userId,
       },
@@ -220,9 +232,11 @@ export async function sellCar(input: {
   carId: string
   salePrice: bigint
   soldAt: Date
+  receiptNumber?: string | null
 }) {
   guard(() => assertSalePrice(input.salePrice))
   assertDate(input.soldAt)
+  const receiptNumber = cleanOptional(input.receiptNumber)
 
   return prisma.$transaction(async (tx) => {
     const car = await tx.car.findUnique({
@@ -252,6 +266,7 @@ export async function sellCar(input: {
         status: 'SOLD',
         salePrice: toDecimal(input.salePrice),
         soldAt: input.soldAt,
+        saleReceiptNumber: receiptNumber,
         totalCost: toDecimal(result.totalCost),
         profit: toDecimal(result.profit),
         companyShare: toDecimal(result.companyShare),
@@ -268,10 +283,12 @@ export async function recordPayout(input: {
   amount: bigint
   note?: string | null
   paidAt: Date
+  receiptNumber?: string | null
 }) {
   guard(() => assertPositive(input.amount))
   assertDate(input.paidAt)
   const note = cleanOptional(input.note)
+  const receiptNumber = cleanOptional(input.receiptNumber)
 
   return prisma.$transaction(async (tx) => {
     await lockOpenCycle(tx, input.cycleId)
@@ -282,6 +299,7 @@ export async function recordPayout(input: {
         cycleId: input.cycleId,
         amount: toDecimal(input.amount),
         note,
+        receiptNumber,
         paidAt: input.paidAt,
         createdById: input.userId,
       },

@@ -142,16 +142,16 @@ export const CAR_QUERY: DocumentNode = gql`
 `
 
 export const OPEN_CYCLE: DocumentNode = gql`
-  mutation OpenCycle($title: String!, $amount: Money!) {
-    openCycle(title: $title, amount: $amount) {
+  mutation OpenCycle($title: String!, $amount: Money!, $receiptNumber: String) {
+    openCycle(title: $title, amount: $amount, receiptNumber: $receiptNumber) {
       id
     }
   }
 `
 
 export const ADD_EXTRA: DocumentNode = gql`
-  mutation AddExtraMoney($cycleId: ID!, $amount: Money!, $note: String) {
-    addExtraMoney(cycleId: $cycleId, amount: $amount, note: $note) {
+  mutation AddExtraMoney($cycleId: ID!, $amount: Money!, $note: String, $receiptNumber: String) {
+    addExtraMoney(cycleId: $cycleId, amount: $amount, note: $note, receiptNumber: $receiptNumber) {
       id
     }
   }
@@ -167,6 +167,7 @@ export const BUY_CAR: DocumentNode = gql`
     $purchasePrice: Money!
     $purchasedAt: DateTime!
     $note: String
+    $receiptNumber: String
   ) {
     buyCar(
       cycleId: $cycleId
@@ -177,6 +178,7 @@ export const BUY_CAR: DocumentNode = gql`
       purchasePrice: $purchasePrice
       purchasedAt: $purchasedAt
       note: $note
+      receiptNumber: $receiptNumber
     ) {
       id
     }
@@ -190,6 +192,7 @@ export const ADD_COST: DocumentNode = gql`
     $amount: Money!
     $description: String!
     $spentAt: DateTime!
+    $receiptNumber: String
   ) {
     addCost(
       carId: $carId
@@ -197,6 +200,7 @@ export const ADD_COST: DocumentNode = gql`
       amount: $amount
       description: $description
       spentAt: $spentAt
+      receiptNumber: $receiptNumber
     ) {
       id
     }
@@ -204,16 +208,16 @@ export const ADD_COST: DocumentNode = gql`
 `
 
 export const SELL_CAR: DocumentNode = gql`
-  mutation SellCar($carId: ID!, $salePrice: Money!, $soldAt: DateTime!) {
-    sellCar(carId: $carId, salePrice: $salePrice, soldAt: $soldAt) {
+  mutation SellCar($carId: ID!, $salePrice: Money!, $soldAt: DateTime!, $receiptNumber: String) {
+    sellCar(carId: $carId, salePrice: $salePrice, soldAt: $soldAt, receiptNumber: $receiptNumber) {
       id
     }
   }
 `
 
 export const RECORD_PAYOUT: DocumentNode = gql`
-  mutation RecordPayout($cycleId: ID!, $amount: Money!, $note: String, $paidAt: DateTime!) {
-    recordPayout(cycleId: $cycleId, amount: $amount, note: $note, paidAt: $paidAt) {
+  mutation RecordPayout($cycleId: ID!, $amount: Money!, $note: String, $paidAt: DateTime!, $receiptNumber: String) {
+    recordPayout(cycleId: $cycleId, amount: $amount, note: $note, paidAt: $paidAt, receiptNumber: $receiptNumber) {
       id
     }
   }

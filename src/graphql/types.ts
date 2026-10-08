@@ -289,6 +289,7 @@ builder.mutationField('openCycle', (t) =>
     args: {
       title: t.arg.string({ required: true }),
       amount: t.arg({ type: 'Money', required: true }),
+      receiptNumber: t.arg.string({ required: false }),
     },
     resolve: async (query, _root, args, ctx) => {
       const user = requireOwner(ctx.user)
@@ -296,6 +297,7 @@ builder.mutationField('openCycle', (t) =>
         userId: user.id,
         title: args.title,
         amount: args.amount,
+        receiptNumber: args.receiptNumber,
       })
       return ctx.prisma.budgetCycle.findUniqueOrThrow({
         ...query,
@@ -312,6 +314,7 @@ builder.mutationField('addExtraMoney', (t) =>
       cycleId: t.arg.id({ required: true }),
       amount: t.arg({ type: 'Money', required: true }),
       note: t.arg.string({ required: false }),
+      receiptNumber: t.arg.string({ required: false }),
     },
     resolve: async (query, _root, args, ctx) => {
       const user = requireOwner(ctx.user)
@@ -320,6 +323,7 @@ builder.mutationField('addExtraMoney', (t) =>
         cycleId: args.cycleId,
         amount: args.amount,
         note: args.note,
+        receiptNumber: args.receiptNumber,
       })
       return ctx.prisma.budgetCycle.findUniqueOrThrow({
         ...query,
@@ -341,6 +345,7 @@ builder.mutationField('buyCar', (t) =>
       purchasePrice: t.arg({ type: 'Money', required: true }),
       purchasedAt: t.arg({ type: 'DateTime', required: true }),
       note: t.arg.string({ required: false }),
+      receiptNumber: t.arg.string({ required: false }),
     },
     resolve: async (query, _root, args, ctx) => {
       const user = requireUser(ctx.user)
@@ -354,6 +359,7 @@ builder.mutationField('buyCar', (t) =>
         purchasePrice: args.purchasePrice,
         purchasedAt: args.purchasedAt,
         note: args.note,
+        receiptNumber: args.receiptNumber,
       })
       return ctx.prisma.car.findUniqueOrThrow({ ...query, where: { id } })
     },
@@ -369,6 +375,7 @@ builder.mutationField('addCost', (t) =>
       amount: t.arg({ type: 'Money', required: true }),
       description: t.arg.string({ required: true }),
       spentAt: t.arg({ type: 'DateTime', required: true }),
+      receiptNumber: t.arg.string({ required: false }),
     },
     resolve: async (query, _root, args, ctx) => {
       const user = requireUser(ctx.user)
@@ -379,6 +386,7 @@ builder.mutationField('addCost', (t) =>
         amount: args.amount,
         description: args.description,
         spentAt: args.spentAt,
+        receiptNumber: args.receiptNumber,
       })
       return ctx.prisma.car.findUniqueOrThrow({ ...query, where: { id } })
     },
@@ -392,6 +400,7 @@ builder.mutationField('sellCar', (t) =>
       carId: t.arg.id({ required: true }),
       salePrice: t.arg({ type: 'Money', required: true }),
       soldAt: t.arg({ type: 'DateTime', required: true }),
+      receiptNumber: t.arg.string({ required: false }),
     },
     resolve: async (query, _root, args, ctx) => {
       requireUser(ctx.user)
@@ -399,6 +408,7 @@ builder.mutationField('sellCar', (t) =>
         carId: args.carId,
         salePrice: args.salePrice,
         soldAt: args.soldAt,
+        receiptNumber: args.receiptNumber,
       })
       return ctx.prisma.car.findUniqueOrThrow({ ...query, where: { id } })
     },
@@ -413,6 +423,7 @@ builder.mutationField('recordPayout', (t) =>
       amount: t.arg({ type: 'Money', required: true }),
       note: t.arg.string({ required: false }),
       paidAt: t.arg({ type: 'DateTime', required: true }),
+      receiptNumber: t.arg.string({ required: false }),
     },
     resolve: async (query, _root, args, ctx) => {
       const user = requireOwner(ctx.user)
@@ -422,6 +433,7 @@ builder.mutationField('recordPayout', (t) =>
         amount: args.amount,
         note: args.note,
         paidAt: args.paidAt,
+        receiptNumber: args.receiptNumber,
       })
       return ctx.prisma.budgetCycle.findUniqueOrThrow({
         ...query,

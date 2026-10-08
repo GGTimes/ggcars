@@ -43,7 +43,9 @@ export function OpenCycleForm() {
   const app = useTranslations('app')
   const [mutate] = useLedgerMutation(OPEN_CYCLE)
   const [formError, setFormError] = useState('')
-  const form = useForm({ defaultValues: { title: '', amount: '' } })
+  const form = useForm({
+    defaultValues: { title: '', amount: '', receiptNumber: '' },
+  })
 
   const onSubmit = form.handleSubmit(async (values) => {
     setFormError('')
@@ -57,7 +59,13 @@ export function OpenCycleForm() {
       return
     }
     try {
-      await mutate({ variables: { title: values.title.trim(), amount } })
+      await mutate({
+        variables: {
+          title: values.title.trim(),
+          amount,
+          receiptNumber: values.receiptNumber.trim() || null,
+        },
+      })
       form.reset()
     } catch (error) {
       setFormError(errorText(error, app('error')))
@@ -75,6 +83,16 @@ export function OpenCycleForm() {
         <span className="label">{t('amount')}</span>
         <MoneyInput control={form.control} name="amount" label={t('amount')} />
       </div>
+      <label>
+        <span className="label">
+          {t('receiptNumber')} ({t('optional')})
+        </span>
+        <textarea
+          className="field min-h-20"
+          placeholder={t('receiptPlaceholder')}
+          {...form.register('receiptNumber')}
+        />
+      </label>
       <FieldError message={formError} />
       <button
         className="btn btn-primary"
@@ -93,7 +111,9 @@ export function ExtraMoneyForm({ cycleId }: { cycleId: string }) {
   const app = useTranslations('app')
   const [mutate] = useLedgerMutation(ADD_EXTRA)
   const [formError, setFormError] = useState('')
-  const form = useForm({ defaultValues: { amount: '', note: '' } })
+  const form = useForm({
+    defaultValues: { amount: '', note: '', receiptNumber: '' },
+  })
 
   const onSubmit = form.handleSubmit(async (values) => {
     setFormError('')
@@ -104,7 +124,12 @@ export function ExtraMoneyForm({ cycleId }: { cycleId: string }) {
     }
     try {
       await mutate({
-        variables: { cycleId, amount, note: values.note.trim() || null },
+        variables: {
+          cycleId,
+          amount,
+          note: values.note.trim() || null,
+          receiptNumber: values.receiptNumber.trim() || null,
+        },
       })
       form.reset()
     } catch (error) {
@@ -124,6 +149,16 @@ export function ExtraMoneyForm({ cycleId }: { cycleId: string }) {
           {t('note')} ({t('optional')})
         </span>
         <input className="field" {...form.register('note')} />
+      </label>
+      <label>
+        <span className="label">
+          {t('receiptNumber')} ({t('optional')})
+        </span>
+        <textarea
+          className="field min-h-20"
+          placeholder={t('receiptPlaceholder')}
+          {...form.register('receiptNumber')}
+        />
       </label>
       <FieldError message={formError} />
       <button
@@ -159,6 +194,7 @@ export function BuyCarForm({
       purchasePrice: '',
       purchasedAt: todayJalaliInput(),
       note: '',
+      receiptNumber: '',
     },
   })
 
@@ -201,6 +237,7 @@ export function BuyCarForm({
           purchasePrice: amount,
           purchasedAt: purchasedAt.toISOString(),
           note: values.note.trim() || null,
+          receiptNumber: values.receiptNumber.trim() || null,
         },
       })
       form.reset({
@@ -211,6 +248,7 @@ export function BuyCarForm({
         purchasePrice: '',
         purchasedAt: todayJalaliInput(),
         note: '',
+        receiptNumber: '',
       })
     } catch (error) {
       setFormError(errorText(error, app('error')))
@@ -268,6 +306,16 @@ export function BuyCarForm({
         </span>
         <input className="field" {...form.register('note')} />
       </label>
+      <label>
+        <span className="label">
+          {t('receiptNumber')} ({t('optional')})
+        </span>
+        <textarea
+          className="field min-h-20"
+          placeholder={t('receiptPlaceholder')}
+          {...form.register('receiptNumber')}
+        />
+      </label>
       <FieldError message={formError} />
       <button
         className="btn btn-primary"
@@ -294,7 +342,12 @@ export function PayoutForm({
   const [mutate] = useLedgerMutation(RECORD_PAYOUT)
   const [formError, setFormError] = useState('')
   const form = useForm({
-    defaultValues: { amount: '', note: '', paidAt: todayJalaliInput() },
+    defaultValues: {
+      amount: '',
+      note: '',
+      paidAt: todayJalaliInput(),
+      receiptNumber: '',
+    },
   })
 
   const onSubmit = form.handleSubmit(async (values) => {
@@ -320,9 +373,15 @@ export function PayoutForm({
           amount,
           note: values.note.trim() || null,
           paidAt: paidAt.toISOString(),
+          receiptNumber: values.receiptNumber.trim() || null,
         },
       })
-      form.reset({ amount: '', note: '', paidAt: todayJalaliInput() })
+      form.reset({
+        amount: '',
+        note: '',
+        paidAt: todayJalaliInput(),
+        receiptNumber: '',
+      })
     } catch (error) {
       setFormError(errorText(error, app('error')))
     }
@@ -349,6 +408,16 @@ export function PayoutForm({
         </span>
         <input className="field" {...form.register('note')} />
       </label>
+      <label>
+        <span className="label">
+          {t('receiptNumber')} ({t('optional')})
+        </span>
+        <textarea
+          className="field min-h-20"
+          placeholder={t('receiptPlaceholder')}
+          {...form.register('receiptNumber')}
+        />
+      </label>
       <FieldError message={formError} />
       <button
         className="btn btn-primary"
@@ -363,6 +432,7 @@ export function PayoutForm({
 
 export function CostForm({ carId }: { carId: string }) {
   const t = useTranslations('car')
+  const dash = useTranslations('dashboard')
   const cost = useTranslations('cost')
   const tv = useTranslations('validation')
   const app = useTranslations('app')
@@ -374,6 +444,7 @@ export function CostForm({ carId }: { carId: string }) {
       amount: '',
       description: '',
       spentAt: todayJalaliInput(),
+      receiptNumber: '',
     },
   })
 
@@ -401,6 +472,7 @@ export function CostForm({ carId }: { carId: string }) {
           amount,
           description: values.description.trim(),
           spentAt: spentAt.toISOString(),
+          receiptNumber: values.receiptNumber.trim() || null,
         },
       })
       form.reset({
@@ -408,6 +480,7 @@ export function CostForm({ carId }: { carId: string }) {
         amount: '',
         description: '',
         spentAt: todayJalaliInput(),
+        receiptNumber: '',
       })
     } catch (error) {
       setFormError(errorText(error, app('error')))
@@ -449,6 +522,16 @@ export function CostForm({ carId }: { carId: string }) {
           <input className="field" {...form.register('spentAt')} />
         </label>
       </div>
+      <label>
+        <span className="label">
+          {dash('receiptNumber')} ({dash('optional')})
+        </span>
+        <textarea
+          className="field min-h-20"
+          placeholder={dash('receiptPlaceholder')}
+          {...form.register('receiptNumber')}
+        />
+      </label>
       <FieldError message={formError} />
       <button
         className="btn btn-primary"
@@ -471,12 +554,17 @@ export function SellCarForm({
   costs: string
 }) {
   const t = useTranslations('car')
+  const dash = useTranslations('dashboard')
   const tv = useTranslations('validation')
   const app = useTranslations('app')
   const [mutate] = useLedgerMutation(SELL_CAR)
   const [formError, setFormError] = useState('')
   const form = useForm({
-    defaultValues: { salePrice: '', soldAt: todayJalaliInput() },
+    defaultValues: {
+      salePrice: '',
+      soldAt: todayJalaliInput(),
+      receiptNumber: '',
+    },
   })
   const typed = parseTomanInput(form.watch('salePrice') ?? '')
   const preview =
@@ -500,7 +588,12 @@ export function SellCarForm({
     }
     try {
       await mutate({
-        variables: { carId, salePrice: amount, soldAt: soldAt.toISOString() },
+        variables: {
+          carId,
+          salePrice: amount,
+          soldAt: soldAt.toISOString(),
+          receiptNumber: values.receiptNumber.trim() || null,
+        },
       })
     } catch (error) {
       setFormError(errorText(error, app('error')))
@@ -527,6 +620,16 @@ export function SellCarForm({
           <input className="field" {...form.register('soldAt')} />
         </label>
       </div>
+      <label>
+        <span className="label">
+          {dash('receiptNumber')} ({dash('optional')})
+        </span>
+        <textarea
+          className="field min-h-20"
+          placeholder={dash('receiptPlaceholder')}
+          {...form.register('receiptNumber')}
+        />
+      </label>
       {preview && profit != null ? (
         <div className="grid gap-3 rounded-xl bg-white/5 p-3 text-sm sm:grid-cols-3">
           <p className="text-ink/60 sm:col-span-3">{t('preview')}</p>
