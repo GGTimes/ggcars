@@ -1,0 +1,149 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+generator pothos {
+  provider     = "prisma-pothos-types"
+  output       = "../src/graphql/pothos-types.ts"
+  clientOutput = "@prisma/client"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  OWNER
+  MANAGER
+}
+
+enum CycleStatus {
+  OPEN
+  CLOSED
+}
+
+enum CapitalKind {
+  INITIAL
+  EXTRA
+}
+
+enum CarStatus {
+  IN_STOCK
+  SOLD
+}
+
+enum CostCategory {
+  REPAIR
+  PARTS
+  TRANSPORT
+  OTHER
+}
+
+model User {
+  id             String         @id @default(uuid())
+  name           String
+  email          String         @unique
+  passwordHash   String
+  role           Role
+  createdAt      DateTime       @default(now())
+  cyclesOpened   BudgetCycle[]  @relation("CycleOpenedBy")
+  capitalEntries CapitalEntry[]
+  carsBought     Car[]          @relation("CarBoughtBy")
+  costs          Cost[]
+  payouts        Payout[]
+}
+
+/// One budget round. Amounts are whole Iranian Toman.
+model BudgetCycle {
+  id             String         @id @default(uuid())
+  title          String
+  status         CycleStatus    @default(OPEN)
+  initialAmount  Decimal        @db.Decimal(18, 0)
+  openedAt       DateTime       @default(now())
+  closedAt       DateTime?
+  openedById     String
+  openedBy       User           @relation("CycleOpenedBy", fields: [openedById], references: [id])
+  capitalEntries CapitalEntry[]
+  cars           Car[]
+  payouts        Payout[]
+
+  @@index([status])
+}
+
+model CapitalEntry {
+  id            String      @id @default(uuid())
+  cycleId       String
+  cycle         BudgetCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  kind          CapitalKind
+  amount        Decimal     @db.Decimal(18, 0)
+  note          String?
+  receiptNumber String?
+  createdById   String
+  createdBy     User        @relation(fields: [createdById], references: [id])
+  createdAt     DateTime    @default(now())
+
+  @@index([cycleId])
+}
+
+model Car {
+  id                    String      @id @default(uuid())
+  cycleId               String
+  cycle                 BudgetCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  title                 String
+  year                  Int?
+  color                 String?
+  plate                 String?
+  status                CarStatus   @default(IN_STOCK)
+  purchasePrice         Decimal     @db.Decimal(18, 0)
+  purchasedAt           DateTime
+  purchaseReceiptNumber String?
+  salePrice             Decimal?    @db.Decimal(18, 0)
+  soldAt                DateTime?
+  saleReceiptNumber     String?
+  /// Sum of repair and other costs in toman, excluding the purchase price. Frozen on sale.
+  totalCost             Decimal?    @db.Decimal(18, 0)
+  profit                Decimal?    @db.Decimal(18, 0)
+  companyShare          Decimal?    @db.Decimal(18, 0)
+  managerShare          Decimal?    @db.Decimal(18, 0)
+  note                  String?
+  boughtById            String
+  boughtBy              User        @relation("CarBoughtBy", fields: [boughtById], references: [id])
+  costs                 Cost[]
+  createdAt             DateTime    @default(now())
+
+  @@index([cycleId])
+  @@index([status])
+}
+
+model Cost {
+  id            String       @id @default(uuid())
+  carId         String
+  car           Car          @relation(fields: [carId], references: [id], onDelete: Cascade)
+  category      CostCategory
+  amount        Decimal      @db.Decimal(18, 0)
+  description   String
+  receiptNumber String?
+  spentAt       DateTime
+  createdById   String
+  createdBy     User         @relation(fields: [createdById], references: [id])
+  createdAt     DateTime     @default(now())
+
+  @@index([carId])
+}
+
+model Payout {
+  id            String      @id @default(uuid())
+  cycleId       String
+  cycle         BudgetCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  amount        Decimal     @db.Decimal(18, 0)
+  note          String?
+  receiptNumber String?
+  paidAt        DateTime
+  createdById   String
+  createdBy     User        @relation(fields: [createdById], references: [id])
+  createdAt     DateTime    @default(now())
+
+  @@index([cycleId])
+}

@@ -1,0 +1,57 @@
+{
+  "name": "ggcars",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "vercel-build": "prisma migrate deploy && prisma db seed && next build",
+    "start": "next start",
+    "lint": "biome check .",
+    "format": "biome check --fix .",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "postinstall": "prisma generate",
+    "db:up": "docker compose up -d db",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "prisma db seed",
+    "db:studio": "prisma studio"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@apollo/client": "^4.0.9",
+    "@apollo/client-integration-nextjs": "^0.14.1",
+    "@pothos/core": "^4.10.0",
+    "@pothos/plugin-prisma": "^4.12.0",
+    "@prisma/client": "^6.19.0",
+    "@tailwindcss/postcss": "^4.1.17",
+    "bcryptjs": "^3.0.2",
+    "graphql": "^16.12.0",
+    "graphql-scalars": "^1.25.0",
+    "graphql-yoga": "^5.16.0",
+    "jalaali-js": "^1.2.8",
+    "jose": "^6.1.0",
+    "next": "^16.4.0",
+    "next-intl": "^4.5.2",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-hook-form": "^7.66.0",
+    "tailwindcss": "^4.1.17"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.5",
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.4",
+    "@types/react-dom": "^19.2.3",
+    "postcss": "^8.5.6",
+    "prisma": "^6.19.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

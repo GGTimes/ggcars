@@ -1,0 +1,194 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: var(--font-vazirmatn), "Vazirmatn", sans-serif;
+  --color-paper: #0c0f0d;
+  --color-ink: #f4f0e8;
+  --color-pine: #1f8f68;
+  --color-leaf: #7ddeaf;
+  --color-gold: #e7b86a;
+  --color-card: #161b18;
+  --color-line: #2c3530;
+  --color-danger: #f09992;
+  --color-sidebar: #101614;
+}
+
+@layer base {
+  html {
+    height: 100%;
+    color-scheme: dark;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100%;
+    background:
+      linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+      radial-gradient(
+        900px 420px at 100% -8%,
+        rgba(125, 222, 175, 0.08),
+        transparent 55%
+      ),
+      radial-gradient(
+        800px 360px at 0% 18%,
+        rgba(231, 184, 106, 0.08),
+        transparent 60%
+      ),
+      var(--color-paper);
+    background-size:
+      36px 36px,
+      36px 36px,
+      auto,
+      auto,
+      auto;
+    color: var(--color-ink);
+    font-family: var(--font-sans), sans-serif;
+    line-height: 1.7;
+  }
+
+  ::selection {
+    background: rgba(125, 222, 175, 0.28);
+  }
+}
+
+@layer components {
+  .field {
+    @apply w-full rounded-xl border border-line bg-white/5 px-3 py-3 text-sm text-ink outline-none transition placeholder:text-ink/30 focus:border-leaf focus:ring-2 focus:ring-leaf/20;
+  }
+
+  select.field option {
+    background: #161b18;
+    color: #f4f0e8;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply bg-leaf text-[#062117] hover:bg-[#c8f5de];
+  }
+
+  .btn-ghost {
+    @apply border border-line bg-transparent text-ink hover:bg-white/5;
+  }
+
+  .btn-danger {
+    @apply bg-danger/15 text-danger hover:bg-danger/25;
+  }
+
+  .card {
+    @apply rounded-2xl border border-line bg-card p-4 shadow-sm sm:p-5;
+    background:
+      linear-gradient(145deg, rgba(255, 255, 255, 0.035), transparent 42%),
+      var(--color-card);
+  }
+
+  .label {
+    @apply mb-1.5 block text-sm text-ink/70;
+  }
+
+  .muted {
+    @apply text-sm text-ink/60;
+  }
+
+  .pill {
+    @apply inline-flex items-center rounded-full bg-white/8 px-2.5 py-1 text-xs font-medium text-ink/75;
+  }
+
+  .pill-live {
+    @apply bg-leaf/15 text-leaf;
+  }
+
+  .unit {
+    @apply pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs text-ink/45;
+  }
+
+  .section-heading {
+    @apply flex flex-wrap items-end justify-between gap-3;
+  }
+
+  .car-hero {
+    position: relative;
+  }
+
+  .car-hero::after {
+    position: absolute;
+    inset-inline-end: -72px;
+    bottom: -96px;
+    width: 220px;
+    height: 220px;
+    border: 1px solid rgba(125, 222, 175, 0.16);
+    border-radius: 999px;
+    background: radial-gradient(
+      circle,
+      rgba(125, 222, 175, 0.14),
+      transparent 62%
+    );
+    content: "";
+    pointer-events: none;
+  }
+
+  .stat-card {
+    @apply transition hover:border-leaf/35 hover:bg-white/5;
+  }
+
+  .vehicle-card {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .vehicle-card::before {
+    position: absolute;
+    inset-inline-start: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: linear-gradient(var(--color-leaf), var(--color-gold));
+    content: "";
+    opacity: 0.75;
+  }
+
+  .history-grid .card {
+    @apply bg-white/[0.035];
+  }
+
+  .action-note {
+    @apply border-gold/25 bg-gold/10 text-gold;
+  }
+
+  .car-mark {
+    @apply relative inline-flex h-10 w-16 shrink-0 items-center justify-center rounded-2xl border;
+  }
+
+  .car-mark-body {
+    position: absolute;
+    inset-inline-start: 14px;
+    top: 13px;
+    width: 38px;
+    height: 13px;
+    border: 1px solid currentColor;
+    border-bottom-width: 2px;
+    border-radius: 14px 18px 7px 7px;
+    color: rgba(244, 240, 232, 0.7);
+  }
+
+  .car-mark-body::before {
+    position: absolute;
+    inset-inline-start: 8px;
+    top: -8px;
+    width: 18px;
+    height: 10px;
+    border: 1px solid currentColor;
+    border-bottom: 0;
+    border-radius: 10px 10px 0 0;
+    content: "";
+  }
+
+  .car-mark-wheel {
+    @apply absolute bottom-2 h-2 w-2 rounded-full bg-ink/80;
+  }
+}
