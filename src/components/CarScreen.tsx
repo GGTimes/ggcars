@@ -50,6 +50,55 @@ export function CarScreen({ id }: { id: string }) {
   const back = car.cycle.status === 'OPEN' ? '/' : `/cycles/${car.cycle.id}`
   const meta = [car.year, car.color, car.plate].filter(Boolean).join(' · ')
 
+  if (role === 'PARTNER') {
+    const mine = car.capitalShares.reduce(
+      (sum, share) => sum + BigInt(share.amount),
+      0n,
+    )
+    return (
+      <div className="mx-auto grid max-w-4xl gap-6">
+        <div>
+          <Link href={back} className="btn btn-ghost px-3 py-1.5 text-sm">
+            {t('back')}
+          </Link>
+          <div className="card mt-4">
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {car.title}
+            </h1>
+            <p className="mt-1 text-sm text-ink/55">
+              {car.cycle.title}
+              {meta ? ` · ${meta}` : ''}
+            </p>
+            {car.capitalShares.length > 0 ? (
+              <p className="mt-4 text-sm">
+                {dash('myMoneyShare')}: <MoneyText value={mine.toString()} />
+              </p>
+            ) : null}
+          </div>
+        </div>
+        {car.costs.length > 0 ? (
+          <section className="card grid gap-3">
+            <h2 className="font-semibold">{t('costs')}</h2>
+            <ul className="grid gap-3 text-sm">
+              {car.costs.map((item) => (
+                <li
+                  key={item.id}
+                  className="flex items-start justify-between gap-3"
+                >
+                  <div>
+                    <p className="font-medium">{cost(item.category)}</p>
+                    <p className="text-ink/70">{item.description}</p>
+                  </div>
+                  <MoneyText value={item.amount} tone="neutral" />
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+      </div>
+    )
+  }
+
   return (
     <div className="mx-auto grid max-w-4xl gap-6">
       <div>
@@ -142,18 +191,34 @@ export function CarScreen({ id }: { id: string }) {
                   <MoneyText value={car.profit} />
                 </dd>
               </div>
+              {role === 'OWNER' ? (
+                <div>
+                  <dt className="text-ink/50">{t('company')}</dt>
+                  <dd className="text-lg font-semibold">
+                    <MoneyText value={car.companyShare ?? '0'} />
+                  </dd>
+                </div>
+              ) : null}
               <div>
-                <dt className="text-ink/50">{t('company')}</dt>
-                <dd className="text-lg font-semibold">
-                  <MoneyText value={car.companyShare ?? '0'} />
-                </dd>
-              </div>
-              <div>
-                <dt className="text-ink/50">{t('manager')}</dt>
+                <dt className="text-ink/50">
+                  {role === 'OWNER' ? t('manager') : dash('mySalesShare')}
+                </dt>
                 <dd className="text-lg font-semibold">
                   <MoneyText value={car.managerShare ?? '0'} tone="neutral" />
                 </dd>
               </div>
+              {car.capitalShares.map((share) => (
+                <div key={share.partner.id}>
+                  <dt className="text-ink/50">
+                    {role === 'OWNER'
+                      ? `${t('moneyShare')} — ${share.partner.name}`
+                      : t('moneyShare')}
+                  </dt>
+                  <dd className="text-lg font-semibold">
+                    <MoneyText value={share.amount} tone="neutral" />
+                  </dd>
+                </div>
+              ))}
             </dl>
           </article>
         ) : null}
@@ -181,6 +246,11 @@ export function CarScreen({ id }: { id: string }) {
                   <div>
                     <p className="font-medium">{cost(item.category)}</p>
                     <p className="text-ink/70">{item.description}</p>
+                    {item.paidBy ? (
+                      <p className="text-xs text-ink/55">
+                        {t('paidBy')}: {item.paidBy}
+                      </p>
+                    ) : null}
                     {item.receiptNumber ? (
                       <p className="text-xs text-gold">
                         {dash('receiptNumber')}: {item.receiptNumber}
@@ -213,6 +283,8 @@ export function CarScreen({ id }: { id: string }) {
             carId={car.id}
             purchasePrice={car.purchasePrice}
             costs={liveCosts.toString()}
+            role={role}
+            stake={car.cycle.summary}
           />
         </>
       ) : car.status === 'SOLD' ? (

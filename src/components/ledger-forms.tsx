@@ -1,29 +1,33 @@
 'use client'
 
 import type { DocumentNode } from '@apollo/client'
-import { useMutation } from '@apollo/client/react'
+import { useMutation, useQuery } from '@apollo/client/react'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { type UseFormRegisterReturn, useForm } from 'react-hook-form'
 import {
   ACTIVE_QUERIES,
   ADD_COST,
   ADD_EXTRA,
   BUY_CAR,
+  GRANT_PARTNER_ACCESS,
   OPEN_CYCLE,
+  PARTNERS,
   RECORD_PAYOUT,
   SELL_CAR,
 } from '@/graphql/operations'
 import { errorText } from '@/lib/errors'
 import { parseTomanInput } from '@/lib/format'
 import { parseJalali, todayJalaliInput } from '@/lib/jalali'
-import { splitProfit } from '@/server/finance'
+import { personalMoneyShare, sharesForSale } from '@/server/finance'
+import type { Role } from '@/types/session'
 import { MoneyInput } from './MoneyInput'
 import { MoneyText } from './MoneyText'
+import { useSession } from './session'
 
-function useLedgerMutation(document: DocumentNode) {
+function useLedgerMutation(document: DocumentNode, extra: DocumentNode[] = []) {
   return useMutation(document, {
-    refetchQueries: ACTIVE_QUERIES,
+    refetchQueries: [...ACTIVE_QUERIES, ...extra],
     awaitRefetchQueries: true,
   })
 }
@@ -37,6 +41,69 @@ function FieldError({ message }: { message: string }) {
   )
 }
 
+function PartnerNameOptions({ listId }: { listId: string }) {
+  const partners = useQuery<{
+    partners: { id: string; name: string; linked: boolean }[]
+  }>(PARTNERS)
+  return (
+    <datalist id={listId}>
+      {(partners.data?.partners ?? [])
+        .filter((partner) => !partner.linked)
+        .map((partner) => (
+          <option key={partner.id} value={partner.name} />
+        ))}
+    </datalist>
+  )
+}
+
+function FundingFields({
+  sourceField,
+  partnerField,
+  source,
+  viewer,
+  listId,
+}: {
+  sourceField: UseFormRegisterReturn
+  partnerField: UseFormRegisterReturn
+  source: string
+  viewer: Role
+  listId: string
+}) {
+  const t = useTranslations('dashboard')
+  return (
+    <>
+      <label>
+        <span className="label">{t('fundingSource')}</span>
+        <select className="field" {...sourceField}>
+          <option value="COMPANY">{t('fundingCompany')}</option>
+          <option value="MANAGER">
+            {viewer === 'MANAGER' ? t('fundingMyself') : t('fundingManager')}
+          </option>
+          <option value="PARTNER">{t('fundingPartner')}</option>
+        </select>
+      </label>
+      {source === 'PARTNER' ? (
+        <label>
+          <span className="label">{t('partnerName')}</span>
+          <input
+            className="field"
+            list={viewer === 'OWNER' ? listId : undefined}
+            {...partnerField}
+          />
+          {viewer === 'OWNER' ? <PartnerNameOptions listId={listId} /> : null}
+        </label>
+      ) : null}
+    </>
+  )
+}
+
+function fundingPayload(values: { source: string; partnerName: string }) {
+  return {
+    source: values.source,
+    partnerName: values.source === 'PARTNER' ? values.partnerName.trim() : null,
+  }
+}
+
 export function OpenCycleForm() {
   const t = useTranslations('dashboard')
   const tv = useTranslations('validation')
@@ -44,8 +111,15 @@ export function OpenCycleForm() {
   const [mutate] = useLedgerMutation(OPEN_CYCLE)
   const [formError, setFormError] = useState('')
   const form = useForm({
-    defaultValues: { title: '', amount: '', receiptNumber: '' },
+    defaultValues: {
+      title: '',
+      amount: '',
+      receiptNumber: '',
+      source: 'COMPANY',
+      partnerName: '',
+    },
   })
+  const source = form.watch('source')
 
   const onSubmit = form.handleSubmit(async (values) => {
     setFormError('')
@@ -58,12 +132,17 @@ export function OpenCycleForm() {
       setFormError(tv('amount'))
       return
     }
+    if (values.source === 'PARTNER' && !values.partnerName.trim()) {
+      setFormError(tv('required'))
+      return
+    }
     try {
       await mutate({
         variables: {
           title: values.title.trim(),
           amount,
           receiptNumber: values.receiptNumber.trim() || null,
+          ...fundingPayload(values),
         },
       })
       form.reset()
@@ -74,11 +153,21 @@ export function OpenCycleForm() {
 
   return (
     <form onSubmit={onSubmit} className="card grid gap-4">
-      <h2 className="text-lg font-semibold">{t('openTitle')}</h2>
+      <div>
+        <h2 className="text-lg font-semibold">{t('openTitle')}</h2>
+        <p className="mt-1 text-sm text-ink/60">{t('fundingHint')}</p>
+      </div>
       <label>
         <span className="label">{t('cycleTitle')}</span>
         <input className="field" {...form.register('title')} />
       </label>
+      <FundingFields
+        sourceField={form.register('source')}
+        partnerField={form.register('partnerName')}
+        source={source}
+        viewer="OWNER"
+        listId="open-partner-names"
+      />
       <div>
         <span className="label">{t('amount')}</span>
         <MoneyInput control={form.control} name="amount" label={t('amount')} />
@@ -109,17 +198,28 @@ export function ExtraMoneyForm({ cycleId }: { cycleId: string }) {
   const t = useTranslations('dashboard')
   const tv = useTranslations('validation')
   const app = useTranslations('app')
-  const [mutate] = useLedgerMutation(ADD_EXTRA)
+  const [mutate] = useLedgerMutation(ADD_EXTRA, [PARTNERS])
   const [formError, setFormError] = useState('')
   const form = useForm({
-    defaultValues: { amount: '', note: '', receiptNumber: '' },
+    defaultValues: {
+      amount: '',
+      note: '',
+      receiptNumber: '',
+      source: 'COMPANY',
+      partnerName: '',
+    },
   })
+  const source = form.watch('source')
 
   const onSubmit = form.handleSubmit(async (values) => {
     setFormError('')
     const amount = parseTomanInput(values.amount)
     if (amount == null || BigInt(amount) <= 0n) {
       setFormError(tv('amount'))
+      return
+    }
+    if (values.source === 'PARTNER' && !values.partnerName.trim()) {
+      setFormError(tv('required'))
       return
     }
     try {
@@ -129,9 +229,16 @@ export function ExtraMoneyForm({ cycleId }: { cycleId: string }) {
           amount,
           note: values.note.trim() || null,
           receiptNumber: values.receiptNumber.trim() || null,
+          ...fundingPayload(values),
         },
       })
-      form.reset()
+      form.reset({
+        amount: '',
+        note: '',
+        receiptNumber: '',
+        source: 'COMPANY',
+        partnerName: '',
+      })
     } catch (error) {
       setFormError(errorText(error, app('error')))
     }
@@ -139,7 +246,17 @@ export function ExtraMoneyForm({ cycleId }: { cycleId: string }) {
 
   return (
     <form onSubmit={onSubmit} className="card grid gap-4">
-      <h2 className="text-lg font-semibold">{t('extraForm')}</h2>
+      <div>
+        <h2 className="text-lg font-semibold">{t('extraForm')}</h2>
+        <p className="mt-1 text-sm text-ink/60">{t('fundingHint')}</p>
+      </div>
+      <FundingFields
+        sourceField={form.register('source')}
+        partnerField={form.register('partnerName')}
+        source={source}
+        viewer="OWNER"
+        listId="extra-partner-names"
+      />
       <div>
         <span className="label">{t('amount')}</span>
         <MoneyInput control={form.control} name="amount" label={t('amount')} />
@@ -172,6 +289,184 @@ export function ExtraMoneyForm({ cycleId }: { cycleId: string }) {
   )
 }
 
+export function PartnerAccessForm({ partnerId }: { partnerId: string }) {
+  const partners = useQuery<{
+    partners: { id: string; linked: boolean; email: string | null }[]
+  }>(PARTNERS)
+  const record = partners.data?.partners.find(
+    (partner) => partner.id === partnerId,
+  )
+  if (!record) return null
+  return (
+    <PartnerAccessFields
+      key={`${record.email ?? ''}:${record.linked}`}
+      partnerId={partnerId}
+      email={record.email ?? ''}
+      linked={record.linked}
+    />
+  )
+}
+
+function PartnerAccessFields({
+  partnerId,
+  email,
+  linked,
+}: {
+  partnerId: string
+  email: string
+  linked: boolean
+}) {
+  const t = useTranslations('dashboard')
+  const tv = useTranslations('validation')
+  const app = useTranslations('app')
+  const [mutate] = useMutation(GRANT_PARTNER_ACCESS, {
+    refetchQueries: [PARTNERS],
+    awaitRefetchQueries: true,
+  })
+  const [formError, setFormError] = useState('')
+  const [saved, setSaved] = useState(false)
+  const form = useForm({ defaultValues: { email, password: '' } })
+
+  const onSubmit = form.handleSubmit(async (values) => {
+    setFormError('')
+    setSaved(false)
+    if (!values.email.trim() || !values.email.includes('@')) {
+      setFormError(tv('email'))
+      return
+    }
+    if (values.password.length < 8) {
+      setFormError(tv('password'))
+      return
+    }
+    try {
+      await mutate({
+        variables: {
+          partnerId,
+          email: values.email.trim(),
+          password: values.password,
+        },
+      })
+      form.reset({ email: values.email.trim(), password: '' })
+      setSaved(true)
+    } catch (error) {
+      setFormError(errorText(error, app('error')))
+    }
+  })
+
+  return (
+    <form onSubmit={onSubmit} className="grid gap-3 rounded-xl bg-white/5 p-3">
+      <div>
+        <p className="font-medium">{t('partnerAccess')}</p>
+        <p className="mt-1 text-ink/60">
+          {linked ? t('partnerLinked') : t('partnerAccessHint')}
+        </p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label>
+          <span className="label">{t('partnerEmail')}</span>
+          <input
+            className="field"
+            type="email"
+            autoComplete="off"
+            {...form.register('email')}
+          />
+        </label>
+        <label>
+          <span className="label">{t('partnerPassword')}</span>
+          <input
+            className="field"
+            type="password"
+            autoComplete="new-password"
+            {...form.register('password')}
+          />
+        </label>
+      </div>
+      <FieldError message={formError} />
+      {saved ? (
+        <p className="text-sm text-leaf">{t('partnerAccessSaved')}</p>
+      ) : null}
+      <button
+        className="btn btn-primary"
+        type="submit"
+        disabled={form.formState.isSubmitting}
+      >
+        {t('savePartnerAccess')}
+      </button>
+    </form>
+  )
+}
+
+export function PocketMoneyForm({ cycleId }: { cycleId: string }) {
+  const t = useTranslations('dashboard')
+  const tv = useTranslations('validation')
+  const app = useTranslations('app')
+  const [mutate] = useLedgerMutation(ADD_EXTRA)
+  const [formError, setFormError] = useState('')
+  const form = useForm({
+    defaultValues: { amount: '', note: '', receiptNumber: '' },
+  })
+
+  const onSubmit = form.handleSubmit(async (values) => {
+    setFormError('')
+    const amount = parseTomanInput(values.amount)
+    if (amount == null || BigInt(amount) <= 0n) {
+      setFormError(tv('amount'))
+      return
+    }
+    try {
+      await mutate({
+        variables: {
+          cycleId,
+          amount,
+          note: values.note.trim() || null,
+          receiptNumber: values.receiptNumber.trim() || null,
+          source: 'MANAGER',
+        },
+      })
+      form.reset()
+    } catch (error) {
+      setFormError(errorText(error, app('error')))
+    }
+  })
+
+  return (
+    <form onSubmit={onSubmit} className="card grid gap-4">
+      <div>
+        <h2 className="text-lg font-semibold">{t('pocketForm')}</h2>
+        <p className="mt-1 text-sm text-ink/60">{t('pocketHint')}</p>
+      </div>
+      <div>
+        <span className="label">{t('amount')}</span>
+        <MoneyInput control={form.control} name="amount" label={t('amount')} />
+      </div>
+      <label>
+        <span className="label">
+          {t('note')} ({t('optional')})
+        </span>
+        <input className="field" {...form.register('note')} />
+      </label>
+      <label>
+        <span className="label">
+          {t('receiptNumber')} ({t('optional')})
+        </span>
+        <textarea
+          className="field min-h-20"
+          placeholder={t('receiptPlaceholder')}
+          {...form.register('receiptNumber')}
+        />
+      </label>
+      <FieldError message={formError} />
+      <button
+        className="btn btn-primary"
+        type="submit"
+        disabled={form.formState.isSubmitting}
+      >
+        {t('savePocket')}
+      </button>
+    </form>
+  )
+}
+
 export function BuyCarForm({
   cycleId,
   cash,
@@ -183,7 +478,11 @@ export function BuyCarForm({
   const car = useTranslations('car')
   const tv = useTranslations('validation')
   const app = useTranslations('app')
-  const [mutate] = useLedgerMutation(BUY_CAR)
+  const { role } = useSession()
+  const [mutate] = useLedgerMutation(
+    BUY_CAR,
+    role === 'OWNER' ? [PARTNERS] : [],
+  )
   const [formError, setFormError] = useState('')
   const form = useForm({
     defaultValues: {
@@ -195,8 +494,12 @@ export function BuyCarForm({
       purchasedAt: todayJalaliInput(),
       note: '',
       receiptNumber: '',
+      source: 'COMPANY',
+      partnerName: '',
+      fundedAmount: '',
     },
   })
+  const source = form.watch('source')
 
   const onSubmit = form.handleSubmit(async (values) => {
     setFormError('')
@@ -210,8 +513,27 @@ export function BuyCarForm({
       setFormError(tv('amount'))
       return
     }
-    if (BigInt(amount) > BigInt(cash)) {
+    let funded: string | null = null
+    if (values.source !== 'COMPANY' && values.fundedAmount.trim()) {
+      const parsed = parseTomanInput(values.fundedAmount)
+      if (parsed == null || BigInt(parsed) <= 0n) {
+        setFormError(tv('amount'))
+        return
+      }
+      if (BigInt(parsed) > BigInt(amount)) {
+        setFormError(tv('fundedTooMuch'))
+        return
+      }
+      funded = parsed
+    }
+    const fromCard = BigInt(amount) - (funded == null ? 0n : BigInt(funded))
+    const coveredByPerson = values.source !== 'COMPANY' && funded == null
+    if (!coveredByPerson && fromCard > BigInt(cash)) {
       setFormError(tv('insufficient'))
+      return
+    }
+    if (values.source === 'PARTNER' && !values.partnerName.trim()) {
+      setFormError(tv('required'))
       return
     }
     if (!purchasedAt) {
@@ -238,6 +560,8 @@ export function BuyCarForm({
           purchasedAt: purchasedAt.toISOString(),
           note: values.note.trim() || null,
           receiptNumber: values.receiptNumber.trim() || null,
+          ...fundingPayload(values),
+          fundedAmount: funded,
         },
       })
       form.reset({
@@ -249,6 +573,9 @@ export function BuyCarForm({
         purchasedAt: todayJalaliInput(),
         note: '',
         receiptNumber: '',
+        source: 'COMPANY',
+        partnerName: '',
+        fundedAmount: '',
       })
     } catch (error) {
       setFormError(errorText(error, app('error')))
@@ -258,6 +585,33 @@ export function BuyCarForm({
   return (
     <form onSubmit={onSubmit} className="card grid gap-4">
       <h2 className="text-lg font-semibold">{t('buyForm')}</h2>
+      <FundingFields
+        sourceField={form.register('source')}
+        partnerField={form.register('partnerName')}
+        source={source}
+        viewer={role}
+        listId="buy-partner-names"
+      />
+      {source === 'COMPANY' ? null : (
+        <div>
+          <span className="label">
+            {source === 'MANAGER' && role === 'MANAGER'
+              ? t('fundedMyself')
+              : t('fundedAmount')}{' '}
+            ({t('optional')})
+          </span>
+          <MoneyInput
+            control={form.control}
+            name="fundedAmount"
+            label={
+              source === 'MANAGER' && role === 'MANAGER'
+                ? t('fundedMyself')
+                : t('fundedAmount')
+            }
+          />
+          <p className="mt-1 text-sm text-ink/60">{t('fundedHint')}</p>
+        </div>
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
         <label>
           <span className="label">{t('carTitle')}</span>
@@ -331,9 +685,15 @@ export function BuyCarForm({
 export function PayoutForm({
   cycleId,
   payable,
+  partnerId,
+  title,
+  tooMuch,
 }: {
   cycleId: string
   payable: string
+  partnerId?: string
+  title?: string
+  tooMuch?: string
 }) {
   const t = useTranslations('dashboard')
   const car = useTranslations('car')
@@ -359,7 +719,7 @@ export function PayoutForm({
       return
     }
     if (BigInt(amount) > BigInt(payable)) {
-      setFormError(tv('payoutTooMuch'))
+      setFormError(tooMuch ?? tv('payoutTooMuch'))
       return
     }
     if (!paidAt) {
@@ -374,6 +734,7 @@ export function PayoutForm({
           note: values.note.trim() || null,
           paidAt: paidAt.toISOString(),
           receiptNumber: values.receiptNumber.trim() || null,
+          partnerId: partnerId ?? null,
         },
       })
       form.reset({
@@ -389,7 +750,7 @@ export function PayoutForm({
 
   return (
     <form onSubmit={onSubmit} className="card grid gap-4">
-      <h2 className="text-lg font-semibold">{t('payoutForm')}</h2>
+      <h2 className="text-lg font-semibold">{title ?? t('payoutForm')}</h2>
       <div>
         <span className="label">{t('payoutAmount')}</span>
         <MoneyInput
@@ -436,7 +797,11 @@ export function CostForm({ carId }: { carId: string }) {
   const cost = useTranslations('cost')
   const tv = useTranslations('validation')
   const app = useTranslations('app')
-  const [mutate] = useLedgerMutation(ADD_COST)
+  const { role } = useSession()
+  const [mutate] = useLedgerMutation(
+    ADD_COST,
+    role === 'OWNER' ? [PARTNERS] : [],
+  )
   const [formError, setFormError] = useState('')
   const form = useForm({
     defaultValues: {
@@ -445,8 +810,11 @@ export function CostForm({ carId }: { carId: string }) {
       description: '',
       spentAt: todayJalaliInput(),
       receiptNumber: '',
+      source: 'COMPANY',
+      partnerName: '',
     },
   })
+  const source = form.watch('source')
 
   const onSubmit = form.handleSubmit(async (values) => {
     setFormError('')
@@ -464,6 +832,10 @@ export function CostForm({ carId }: { carId: string }) {
       setFormError(tv('date'))
       return
     }
+    if (values.source === 'PARTNER' && !values.partnerName.trim()) {
+      setFormError(tv('required'))
+      return
+    }
     try {
       await mutate({
         variables: {
@@ -473,6 +845,7 @@ export function CostForm({ carId }: { carId: string }) {
           description: values.description.trim(),
           spentAt: spentAt.toISOString(),
           receiptNumber: values.receiptNumber.trim() || null,
+          ...fundingPayload(values),
         },
       })
       form.reset({
@@ -481,6 +854,8 @@ export function CostForm({ carId }: { carId: string }) {
         description: '',
         spentAt: todayJalaliInput(),
         receiptNumber: '',
+        source: 'COMPANY',
+        partnerName: '',
       })
     } catch (error) {
       setFormError(errorText(error, app('error')))
@@ -491,8 +866,23 @@ export function CostForm({ carId }: { carId: string }) {
     <form onSubmit={onSubmit} className="card grid gap-4">
       <div>
         <h2 className="text-lg font-semibold">{t('addCost')}</h2>
-        <p className="mt-1 text-sm text-gold">{t('costBeyondCash')}</p>
+        <p
+          className={
+            source === 'COMPANY'
+              ? 'mt-1 text-sm text-gold'
+              : 'mt-1 text-sm text-ink/60'
+          }
+        >
+          {source === 'COMPANY' ? t('costBeyondCash') : t('fromPocketHint')}
+        </p>
       </div>
+      <FundingFields
+        sourceField={form.register('source')}
+        partnerField={form.register('partnerName')}
+        source={source}
+        viewer={role}
+        listId="cost-partner-names"
+      />
       <div className="grid gap-4 sm:grid-cols-2">
         <label>
           <span className="label">{t('category')}</span>
@@ -548,10 +938,24 @@ export function SellCarForm({
   carId,
   purchasePrice,
   costs,
+  role,
+  stake,
 }: {
   carId: string
   purchasePrice: string
   costs: string
+  role: Role
+  stake: {
+    capitalTotal: string
+    companyCapital: string
+    myCapital: string
+    partners: {
+      id: string
+      name: string
+      capital: string
+      isManager: boolean
+    }[]
+  }
 }) {
   const t = useTranslations('car')
   const dash = useTranslations('dashboard')
@@ -567,12 +971,49 @@ export function SellCarForm({
     },
   })
   const typed = parseTomanInput(form.watch('salePrice') ?? '')
-  const preview =
-    typed == null
-      ? null
-      : splitProfit(BigInt(typed) - BigInt(purchasePrice) - BigInt(costs))
   const profit =
     typed == null ? null : BigInt(typed) - BigInt(purchasePrice) - BigInt(costs)
+  const preview =
+    profit == null
+      ? null
+      : role === 'MANAGER'
+        ? {
+            salesShare: sharesForSale(profit, [
+              { key: 'company', capital: BigInt(stake.capitalTotal) },
+            ]).salesShare,
+            moneyShare: personalMoneyShare(
+              profit,
+              BigInt(stake.myCapital),
+              BigInt(stake.capitalTotal),
+            ),
+            companyShare: null as bigint | null,
+            partners: [] as { name: string; amount: bigint }[],
+          }
+        : (() => {
+            const shares = sharesForSale(profit, [
+              { key: 'company', capital: BigInt(stake.companyCapital) },
+              ...stake.partners
+                .filter((partner) => BigInt(partner.capital) > 0n)
+                .map((partner) => ({
+                  key: partner.id,
+                  capital: BigInt(partner.capital),
+                })),
+            ])
+            return {
+              salesShare: shares.salesShare,
+              moneyShare: 0n,
+              companyShare: shares.companyShare,
+              partners: stake.partners
+                .filter((partner) => BigInt(partner.capital) > 0n)
+                .map((partner) => ({
+                  name: partner.name,
+                  amount:
+                    shares.partnerShares.find(
+                      (share) => share.key === partner.id,
+                    )?.amount ?? 0n,
+                })),
+            }
+          })()
 
   const onSubmit = form.handleSubmit(async (values) => {
     setFormError('')
@@ -637,14 +1078,32 @@ export function SellCarForm({
             <span className="block text-ink/50">{t('profit')}</span>
             <MoneyText value={profit} />
           </p>
+          {preview.companyShare != null ? (
+            <p>
+              <span className="block text-ink/50">{t('company')}</span>
+              <MoneyText value={preview.companyShare} />
+            </p>
+          ) : null}
           <p>
-            <span className="block text-ink/50">{t('company')}</span>
-            <MoneyText value={preview.companyShare} />
+            <span className="block text-ink/50">
+              {role === 'MANAGER' ? dash('mySalesShare') : t('manager')}
+            </span>
+            <MoneyText value={preview.salesShare} tone="neutral" />
           </p>
-          <p>
-            <span className="block text-ink/50">{t('manager')}</span>
-            <MoneyText value={preview.managerShare} />
-          </p>
+          {role === 'MANAGER' && BigInt(stake.myCapital) > 0n ? (
+            <p>
+              <span className="block text-ink/50">{t('moneyShare')}</span>
+              <MoneyText value={preview.moneyShare} tone="neutral" />
+            </p>
+          ) : null}
+          {preview.partners.map((partner) => (
+            <p key={partner.name}>
+              <span className="block text-ink/50">
+                {t('moneyShare')} — {partner.name}
+              </span>
+              <MoneyText value={partner.amount} tone="neutral" />
+            </p>
+          ))}
         </div>
       ) : null}
       <FieldError message={formError} />

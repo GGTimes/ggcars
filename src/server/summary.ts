@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import {
   type BudgetEvent,
+  type PartnerInput,
   type Summary,
   summarize,
   totalBudgetFromEvents,
@@ -17,7 +18,19 @@ export async function loadSummary(
 ): Promise<LoadedSummary> {
   const entries = await db.capitalEntry.findMany({
     where: { cycleId },
-    select: { kind: true, amount: true, createdAt: true },
+    select: {
+      kind: true,
+      amount: true,
+      createdAt: true,
+      partnerId: true,
+      partner: {
+        select: {
+          id: true,
+          name: true,
+          user: { select: { id: true, role: true } },
+        },
+      },
+    },
   })
   const cars = await db.car.findMany({
     where: { cycleId },
@@ -29,19 +42,64 @@ export async function loadSummary(
       createdAt: true,
       soldAt: true,
       costs: { select: { amount: true, createdAt: true } },
+      capitalShares: {
+        select: {
+          amount: true,
+          partnerId: true,
+          partner: {
+            select: {
+              id: true,
+              name: true,
+              user: { select: { id: true, role: true } },
+            },
+          },
+        },
+      },
     },
   })
   const payouts = await db.payout.findMany({
     where: { cycleId },
-    select: { amount: true, createdAt: true },
+    select: {
+      amount: true,
+      createdAt: true,
+      partnerId: true,
+      partner: { select: { user: { select: { role: true } } } },
+    },
   })
+  const partners = new Map<string, PartnerInput>()
+  const ensurePartner = (
+    partner: {
+      id: string
+      name: string
+      user: { id: string; role: 'OWNER' | 'MANAGER' | 'PARTNER' } | null
+    },
+    partnerId: string,
+  ) => {
+    const current = partners.get(partnerId)
+    if (current) return current
+    const created: PartnerInput = {
+      id: partner.id,
+      name: partner.name,
+      isManager: partner.user?.role === 'MANAGER',
+      userId: partner.user?.id ?? null,
+      capital: 0n,
+      profitShare: 0n,
+      paid: 0n,
+    }
+    partners.set(partnerId, created)
+    return created
+  }
   const events: BudgetEvent[] = []
   for (const entry of entries) {
+    const amount = decimalToBigint(entry.amount)
     events.push({
       at: entry.createdAt.getTime(),
       kind: 'capital',
-      amount: decimalToBigint(entry.amount),
+      amount,
     })
+    if (entry.partnerId && entry.partner) {
+      ensurePartner(entry.partner, entry.partnerId).capital += amount
+    }
   }
   for (const car of cars) {
     events.push({
@@ -63,13 +121,26 @@ export async function loadSummary(
         amount: decimalToBigint(cost.amount),
       })
     }
+    for (const share of car.capitalShares) {
+      if (!share.partner) continue
+      ensurePartner(share.partner, share.partnerId).profitShare +=
+        decimalToBigint(share.amount)
+    }
   }
+  let managerPayouts = 0n
   for (const payout of payouts) {
+    const amount = decimalToBigint(payout.amount)
     events.push({
       at: payout.createdAt.getTime(),
       kind: 'payout',
-      amount: decimalToBigint(payout.amount),
+      amount,
     })
+    if (payout.partnerId == null || payout.partner?.user?.role === 'MANAGER') {
+      managerPayouts += amount
+      continue
+    }
+    const partner = partners.get(payout.partnerId)
+    if (partner) partner.paid += amount
   }
 
   return {
@@ -80,10 +151,8 @@ export async function loadSummary(
       extraAmount: entries
         .filter((entry) => entry.kind === 'EXTRA')
         .reduce((sum, entry) => sum + decimalToBigint(entry.amount), 0n),
-      payouts: payouts.reduce(
-        (sum, payout) => sum + decimalToBigint(payout.amount),
-        0n,
-      ),
+      payouts: managerPayouts,
+      partners: [...partners.values()],
       cars: cars.map((car) => ({
         purchasePrice: decimalToBigint(car.purchasePrice),
         costs: car.costs.reduce(

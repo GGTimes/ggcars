@@ -7,6 +7,8 @@ import {
   cardView,
   carResult,
   companyTake,
+  personalMoneyShare,
+  sharesForSale,
   splitProfit,
   summarize,
   totalBudgetFromEvents,
@@ -46,13 +48,64 @@ describe('splitProfit', () => {
     }
   })
 
-  it('leaves a loss with the company', () => {
+  it('leaves a loss with the company when nobody else put money in', () => {
     expect(splitProfit(-200n)).toEqual({
       companyShare: -200n,
       managerShare: 0n,
     })
     expect(splitProfit(0n)).toEqual({ companyShare: 0n, managerShare: 0n })
   })
+})
+
+describe('sharesForSale', () => {
+  it('matches the 60/40 split when only the company put money in', () => {
+    for (const profit of [-200n, -1n, 0n, 1n, 200n, 201n]) {
+      const base = splitProfit(profit)
+      const shares = sharesForSale(profit, [{ key: 'company', capital: 1000n }])
+      expect(shares.salesShare).toBe(base.managerShare)
+      expect(shares.companyShare).toBe(base.companyShare)
+      expect(shares.partnerShares).toEqual([])
+      expect(shares.companyShare + shares.salesShare).toBe(profit)
+    }
+  })
+
+  it('adds a money share on top of the sales share', () => {
+    const shares = sharesForSale(200n, [
+      { key: 'company', capital: 1000n },
+      { key: 'manager', capital: 100n },
+    ])
+    expect(shares.salesShare).toBe(80n)
+    expect(shares.partnerShares).toEqual([{ key: 'manager', amount: 10n }])
+    expect(shares.companyShare).toBe(110n)
+    expect(personalMoneyShare(200n, 100n, 1100n)).toBe(10n)
+  })
+
+  it('still splits by money when someone put in more than the company', () => {
+    const shares = sharesForSale(200n, [
+      { key: 'company', capital: 1000n },
+      { key: 'manager', capital: 1000n },
+    ])
+    expect(shares.salesShare).toBe(80n)
+    expect(shares.companyShare).toBe(60n)
+    expect(shares.partnerShares).toEqual([{ key: 'manager', amount: 60n }])
+    expect(
+      shares.companyShare + shares.salesShare + shares.partnerShares[0].amount,
+    ).toBe(200n)
+  })
+
+  it('splits a loss across the money that was put in', () => {
+    const shares = sharesForSale(-200n, [
+      { key: 'company', capital: 1000n },
+      { key: 'manager', capital: 100n },
+    ])
+    expect(shares.salesShare).toBe(0n)
+    expect(shares.partnerShares).toEqual([{ key: 'manager', amount: -18n }])
+    expect(shares.companyShare).toBe(-182n)
+    expect(
+      shares.companyShare + shares.salesShare + shares.partnerShares[0].amount,
+    ).toBe(-200n)
+  })
+
 })
 
 describe('carResult', () => {
@@ -257,6 +310,48 @@ describe('summarize', () => {
     expect(funded.cash).toBe(1500n)
     expect(funded.companyShare).toBe(240n)
     expect(funded.managerShare).toBe(160n)
+  })
+
+  it('pays the manager for sales and for money, and leaves other principal with them', () => {
+    const summary = summarize({
+      initialAmount: 1000n,
+      extraAmount: 100n,
+      payouts: 0n,
+      cars: [
+        {
+          purchasePrice: 700n,
+          costs: 100n,
+          salePrice: 1000n,
+          companyShare: 100n,
+          managerShare: 80n,
+        },
+      ],
+      partners: [
+        {
+          id: 'manager',
+          name: 'مدیر فروش',
+          isManager: true,
+          capital: 100n,
+          profitShare: 10n,
+          paid: 0n,
+        },
+        {
+          id: 'other',
+          name: 'شریک',
+          isManager: false,
+          capital: 0n,
+          profitShare: 10n,
+          paid: 0n,
+        },
+      ],
+    })
+
+    expect(summary.cash).toBe(1300n)
+    expect(summary.managerPayable).toBe(90n)
+    expect(summary.companyCapital).toBe(1000n)
+    expect(summary.partnerCapital).toBe(100n)
+    expect(summary.companyPosition).toBe(1100n)
+    expect(summary.partners[1]?.payable).toBe(10n)
   })
 
   it('keeps a loss inside the company position', () => {

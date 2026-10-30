@@ -14,10 +14,15 @@ import { Link, useRouter } from '@/i18n/routing'
 import { errorText } from '@/lib/errors'
 import { toPersianDigits } from '@/lib/format'
 import { formatJalaliIso } from '@/lib/jalali'
-import { companyTake } from '@/server/finance'
 import type { CarListItem, CycleData } from '@/types/api'
 import { CarMark } from './CarMark'
-import { BuyCarForm, ExtraMoneyForm, PayoutForm } from './ledger-forms'
+import {
+  BuyCarForm,
+  ExtraMoneyForm,
+  PartnerAccessForm,
+  PayoutForm,
+  PocketMoneyForm,
+} from './ledger-forms'
 import { MoneyText } from './MoneyText'
 import { ReceiptEditor } from './ReceiptEditor'
 import { StatusPill } from './StatusPill'
@@ -61,6 +66,7 @@ export function CycleScreen({
   allowEdits: boolean
 }) {
   const t = useTranslations('dashboard')
+  const tv = useTranslations('validation')
   const carT = useTranslations('car')
   const status = useTranslations('status')
   const capital = useTranslations('capital')
@@ -81,9 +87,12 @@ export function CycleScreen({
     awaitRefetchQueries: true,
   })
   const payable = BigInt(cycle.summary.managerPayable)
-  const companyCash = companyTake(
-    BigInt(cycle.summary.totalBudget),
-    BigInt(cycle.summary.companyShare),
+  const companyPrincipal = BigInt(cycle.summary.companyCapital)
+  const companyProfit = BigInt(cycle.summary.companyShare)
+  const companyTotal = companyPrincipal + companyProfit
+  const inventoryCost = BigInt(cycle.summary.inventoryCost)
+  const otherDue = cycle.summary.partners.some(
+    (partner) => !partner.isManager && BigInt(partner.payable) > 0n,
   )
   const editable = allowEdits && cycle.status === 'OPEN'
   const isOwner = role === 'OWNER'
@@ -166,7 +175,7 @@ export function CycleScreen({
             </dd>
           </div>
         </dl>
-        {BigInt(cycle.summary.inventoryCost) > 0n ? (
+        {inventoryCost > 0n ? (
           <p className="mt-3 text-xs text-ink/50">
             {t('inventoryHint')}:{' '}
             <MoneyText value={cycle.summary.inventoryCost} tone="neutral" />
@@ -174,21 +183,153 @@ export function CycleScreen({
         ) : null}
       </section>
 
-      <section className="grid gap-3 md:grid-cols-3">
-        <Stat label={t('companyCash')} hint={t('companyCashHint')}>
-          <MoneyText value={companyCash} tone="neutral" />
-        </Stat>
-        <Stat
-          className={payable > 0n ? 'border-gold/40' : ''}
-          label={t('payable')}
-          hint={t('payableHint')}
-        >
-          <MoneyText value={cycle.summary.managerPayable} tone="neutral" />
-        </Stat>
-        <Stat label={t('company')} hint={t('companyHint')}>
-          <MoneyText value={cycle.summary.companyShare} />
-        </Stat>
-      </section>
+      {isOwner ? (
+        <section className="grid gap-3 md:grid-cols-3">
+          <Stat
+            label={t('companyCash')}
+            hint={
+              <>
+                {t('companyPrincipal')}:{' '}
+                <MoneyText value={companyPrincipal} tone="neutral" />
+                <span className="mt-1 block">
+                  {t('companyProfit')}:{' '}
+                  <MoneyText value={companyProfit} tone="neutral" />
+                </span>
+              </>
+            }
+          >
+            <MoneyText value={companyTotal} tone="neutral" />
+          </Stat>
+          <Stat
+            className={payable > 0n ? 'border-gold/40' : ''}
+            label={t('payable')}
+            hint={t('payableHint')}
+          >
+            <MoneyText value={cycle.summary.managerPayable} tone="neutral" />
+          </Stat>
+          <Stat label={t('company')} hint={t('companyHint')}>
+            <MoneyText value={cycle.summary.companyShare} />
+          </Stat>
+        </section>
+      ) : (
+        <section className="grid gap-3 md:grid-cols-3">
+          <Stat label={t('mySalesShare')} hint={t('mySalesHint')}>
+            <MoneyText value={cycle.summary.managerShare} tone="neutral" />
+          </Stat>
+          <Stat
+            label={t('myMoneyShare')}
+            hint={
+              <>
+                {t('myMoneyHint')}
+                <span className="mt-1 block">
+                  {t('myCapital')}:{' '}
+                  <MoneyText value={cycle.summary.myCapital} tone="neutral" />
+                </span>
+              </>
+            }
+          >
+            <MoneyText value={cycle.summary.myCapitalShare} tone="neutral" />
+          </Stat>
+          <Stat
+            className={payable > 0n ? 'border-gold/40' : ''}
+            label={t('myPayable')}
+            hint={t('myPayableHint')}
+          >
+            <MoneyText value={cycle.summary.managerPayable} tone="neutral" />
+          </Stat>
+        </section>
+      )}
+
+      {isOwner ? (
+        <section className="card grid gap-4">
+          <div>
+            <h2 className="font-semibold">
+              {cycle.summary.partners.length > 0
+                ? t('stakes')
+                : t('companyAccount')}
+            </h2>
+            <p className="mt-1 text-sm text-ink/60">
+              {cycle.summary.partners.length > 0
+                ? t('stakesHint')
+                : t('companyAccountHint')}
+            </p>
+          </div>
+          <ul className="grid gap-3 text-sm">
+            <li className="grid gap-2 border-b border-line/70 pb-3 last:border-0 sm:grid-cols-2 lg:grid-cols-4">
+              <span className="font-medium">{t('companyFunder')}</span>
+              <span>
+                {t('companyPrincipal')}:{' '}
+                <MoneyText value={companyPrincipal} tone="neutral" />
+              </span>
+              <span>
+                {t('companyProfit')}: <MoneyText value={companyProfit} />
+              </span>
+              <span>
+                {t('companyCash')}:{' '}
+                <MoneyText value={companyTotal} tone="neutral" />
+              </span>
+            </li>
+            {inventoryCost > 0n ? (
+              <li className="text-ink/60">
+                {t('companyHeld')}{' '}
+                <MoneyText value={inventoryCost} tone="neutral" />
+              </li>
+            ) : null}
+            {cycle.summary.partners.map((partner) => (
+              <li
+                key={partner.id}
+                className="grid gap-2 border-b border-line/70 pb-3 last:border-0 sm:grid-cols-3"
+              >
+                <span className="font-medium">{partner.name}</span>
+                <span>
+                  {t('partnerCapital')}:{' '}
+                  <MoneyText value={partner.capital} tone="neutral" />
+                </span>
+                <span>
+                  {t('partnerProfit')}:{' '}
+                  <MoneyText value={partner.profitShare} tone="neutral" />
+                  {partner.isManager ? (
+                    <span className="mt-1 block text-ink/55">
+                      {t('payable')}:{' '}
+                      <MoneyText
+                        value={cycle.summary.managerPayable}
+                        tone="neutral"
+                      />
+                    </span>
+                  ) : BigInt(partner.payable) > 0n ? (
+                    <span className="mt-1 block text-ink/55">
+                      {t('payable')}:{' '}
+                      <MoneyText value={partner.payable} tone="neutral" />
+                    </span>
+                  ) : null}
+                </span>
+                {partner.isManager ? null : (
+                  <div className="sm:col-span-3">
+                    <PartnerAccessForm partnerId={partner.id} />
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+          {editable
+            ? cycle.summary.partners
+                .filter(
+                  (partner) =>
+                    !partner.isManager && BigInt(partner.payable) > 0n,
+                )
+                .map((partner) => (
+                  <PayoutForm
+                    key={partner.id}
+                    cycleId={cycle.id}
+                    payable={partner.payable}
+                    partnerId={partner.id}
+                    title={t('payPartner', { name: partner.name })}
+                    tooMuch={tv('payoutTooMuchPartner')}
+                  />
+                ))
+            : null}
+        </section>
+      ) : null}
 
       <section className="grid gap-3">
         <div className="section-heading">
@@ -251,14 +392,18 @@ export function CycleScreen({
                           <MoneyText value={car.profit} />
                         </dd>
                       </div>
+                      {isOwner ? (
+                        <div>
+                          <dt className="text-ink/50">{t('company')}</dt>
+                          <dd>
+                            <MoneyText value={car.companyShare ?? '0'} />
+                          </dd>
+                        </div>
+                      ) : null}
                       <div>
-                        <dt className="text-ink/50">{t('company')}</dt>
-                        <dd>
-                          <MoneyText value={car.companyShare ?? '0'} />
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="text-ink/50">{carT('managerShort')}</dt>
+                        <dt className="text-ink/50">
+                          {isOwner ? carT('managerShort') : t('mySalesShare')}
+                        </dt>
                         <dd>
                           <MoneyText
                             value={car.managerShare ?? '0'}
@@ -266,6 +411,18 @@ export function CycleScreen({
                           />
                         </dd>
                       </div>
+                      {car.capitalShares.map((share) => (
+                        <div key={share.partner.id}>
+                          <dt className="text-ink/50">
+                            {isOwner
+                              ? `${carT('moneyShare')} — ${share.partner.name}`
+                              : carT('moneyShare')}
+                          </dt>
+                          <dd>
+                            <MoneyText value={share.amount} tone="neutral" />
+                          </dd>
+                        </div>
+                      ))}
                     </>
                   ) : null}
                 </dl>
@@ -277,37 +434,48 @@ export function CycleScreen({
 
       <section className="history-grid grid gap-3 md:grid-cols-2">
         <div className="card">
-          <h2 className="mb-3 font-semibold">{t('entries')}</h2>
-          <ul className="grid gap-2 text-sm">
-            {cycle.capitalEntries.map((entry) => (
-              <li
-                key={entry.id}
-                className="border-b border-line/70 pb-3 last:border-0 last:pb-0"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-ink/80">
-                    {capital(entry.kind)}
-                    {entry.note ? ` — ${entry.note}` : ''}
-                    {entry.receiptNumber
-                      ? ` — ${t('receiptNumber')}: ${entry.receiptNumber}`
-                      : ''}
-                  </span>
-                  <MoneyText value={entry.amount} tone="neutral" />
-                </div>
-                {isOwner ? (
-                  <ReceiptEditor
-                    mutation={UPDATE_CAPITAL_RECEIPT}
-                    idName="entryId"
-                    id={entry.id}
-                    value={entry.receiptNumber}
-                  />
-                ) : null}
-              </li>
-            ))}
-          </ul>
+          <h2 className="mb-3 font-semibold">
+            {isOwner ? t('entries') : t('myEntries')}
+          </h2>
+          {!isOwner && cycle.capitalEntries.length === 0 ? (
+            <p className="text-sm text-ink/55">{t('noPersonalMoney')}</p>
+          ) : (
+            <ul className="grid gap-2 text-sm">
+              {cycle.capitalEntries.map((entry) => (
+                <li
+                  key={entry.id}
+                  className="border-b border-line/70 pb-3 last:border-0 last:pb-0"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-ink/80">
+                      {entry.partner ? `${entry.partner.name} — ` : ''}
+                      {capital(entry.kind)}
+                      {entry.note ? ` — ${entry.note}` : ''}
+                      {entry.receiptNumber
+                        ? ` — ${t('receiptNumber')}: ${entry.receiptNumber}`
+                        : ''}
+                    </span>
+                    <MoneyText value={entry.amount} tone="neutral" />
+                  </div>
+                  {isOwner ? (
+                    <ReceiptEditor
+                      mutation={UPDATE_CAPITAL_RECEIPT}
+                      idName="entryId"
+                      id={entry.id}
+                      value={entry.receiptNumber}
+                    />
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
         <div className="card">
-          <h2 className="mb-3 font-semibold">{t('payouts')}</h2>
+          <h2 className="mb-3 font-semibold">
+            {isOwner && cycle.summary.partners.length > 0
+              ? t('payoutsAll')
+              : t('payouts')}
+          </h2>
           {cycle.payouts.length === 0 ? (
             <p className="text-sm text-ink/55">{t('noPayouts')}</p>
           ) : (
@@ -319,6 +487,7 @@ export function CycleScreen({
                 >
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-ink/80">
+                      {payout.partner ? `${payout.partner.name} — ` : ''}
                       {formatJalaliIso(payout.paidAt)}
                       {payout.note ? ` — ${payout.note}` : ''}
                       {payout.receiptNumber
@@ -351,9 +520,7 @@ export function CycleScreen({
               </p>
               <h2 className="text-lg font-semibold">{t('actions')}</h2>
             </div>
-            <span className="pill">
-              {isOwner ? roles('OWNER') : roles('MANAGER')}
-            </span>
+            <span className="pill">{roles(role)}</span>
           </div>
           <p className="muted">
             {isOwner ? t('ownerActionsHint') : t('managerActionsHint')}
@@ -365,9 +532,7 @@ export function CycleScreen({
             {isOwner ? (
               <ExtraMoneyForm cycleId={cycle.id} />
             ) : (
-              <p className="card action-note text-sm text-ink/70">
-                {t('managerNoCharge')}
-              </p>
+              <PocketMoneyForm cycleId={cycle.id} />
             )}
             {isOwner ? (
               payable > 0n ? (
@@ -390,6 +555,9 @@ export function CycleScreen({
                   <p className="text-sm text-ink/80">
                     {payable > 0n ? t('closeConfirm') : t('closeOk')}
                   </p>
+                  {otherDue ? (
+                    <p className="text-sm text-ink/80">{t('closePartner')}</p>
+                  ) : null}
                   {closeError ? (
                     <p className="text-sm text-danger" role="alert">
                       {closeError}

@@ -6,13 +6,15 @@ import {
   Role,
 } from '@prisma/client'
 import prisma from '@/lib/prisma'
-import { requireOwner, requireUser } from '@/server/auth'
+import { requireOwner, requireStaff, requireUser } from '@/server/auth'
+import type { PartnerSummary } from '@/server/finance'
 import {
   addCost,
   addExtraMoney,
   buyCar,
   closeCycle,
   deleteCycle,
+  grantPartnerAccess,
   openCycle,
   recordPayout,
   sellCar,
@@ -35,6 +37,70 @@ const CarStatusEnum = builder.enumType(CarStatus, { name: 'CarStatus' })
 const CostCategoryEnum = builder.enumType(CostCategory, {
   name: 'CostCategory',
 })
+const FundingSourceEnum = builder.enumType('FundingSource', {
+  values: ['COMPANY', 'MANAGER', 'PARTNER'] as const,
+})
+
+function isOwner(user: { role: string } | null) {
+  return user?.role === 'OWNER'
+}
+
+function isPartner(user: { role: string } | null) {
+  return user?.role === 'PARTNER'
+}
+
+function viewerStakes(
+  summary: LoadedSummary,
+  user: { id: string; role: string } | null,
+) {
+  if (user?.role === 'MANAGER') {
+    return summary.partners.filter((partner) => partner.isManager)
+  }
+  if (user?.role === 'PARTNER') {
+    return summary.partners.filter((partner) => partner.userId === user.id)
+  }
+  return []
+}
+
+function partnerCycleWhere(userId: string) {
+  return {
+    OR: [
+      { capitalEntries: { some: { partner: { userId } } } },
+      { payouts: { some: { partner: { userId } } } },
+      {
+        cars: {
+          some: { capitalShares: { some: { partner: { userId } } } },
+        },
+      },
+    ],
+  }
+}
+
+const PartnerStake = builder
+  .objectRef<PartnerSummary>('PartnerStake')
+  .implement({
+    fields: (t) => ({
+      id: t.exposeString('id'),
+      name: t.exposeString('name'),
+      isManager: t.exposeBoolean('isManager'),
+      capital: t.field({
+        type: 'Money',
+        resolve: (partner) => partner.capital,
+      }),
+      profitShare: t.field({
+        type: 'Money',
+        resolve: (partner) => partner.profitShare,
+      }),
+      paid: t.field({
+        type: 'Money',
+        resolve: (partner) => partner.paid,
+      }),
+      payable: t.field({
+        type: 'Money',
+        resolve: (partner) => partner.payable,
+      }),
+    }),
+  })
 
 const Viewer = builder.objectRef<SessionUser>('Viewer').implement({
   fields: (t) => ({
@@ -54,40 +120,114 @@ const CycleSummaryType = builder
     fields: (t) => ({
       initialAmount: t.field({
         type: 'Money',
-        resolve: (summary) => summary.initialAmount,
+        resolve: (summary, _args, ctx) =>
+          isPartner(ctx.user) ? 0n : summary.initialAmount,
       }),
       extraAmount: t.field({
         type: 'Money',
-        resolve: (summary) => summary.extraAmount,
+        resolve: (summary, _args, ctx) =>
+          isPartner(ctx.user) ? 0n : summary.extraAmount,
       }),
-      cash: t.field({ type: 'Money', resolve: (summary) => summary.cash }),
+      cash: t.field({
+        type: 'Money',
+        resolve: (summary, _args, ctx) =>
+          isPartner(ctx.user) ? 0n : summary.cash,
+      }),
       inventoryCost: t.field({
         type: 'Money',
-        resolve: (summary) => summary.inventoryCost,
+        resolve: (summary, _args, ctx) =>
+          isPartner(ctx.user) ? 0n : summary.inventoryCost,
       }),
       companyShare: t.field({
         type: 'Money',
-        resolve: (summary) => summary.companyShare,
+        resolve: (summary, _args, ctx) =>
+          isOwner(ctx.user) ? summary.companyShare : 0n,
       }),
       managerShare: t.field({
         type: 'Money',
-        resolve: (summary) => summary.managerShare,
+        resolve: (summary, _args, ctx) =>
+          isPartner(ctx.user) ? 0n : summary.managerShare,
       }),
       managerPayable: t.field({
         type: 'Money',
-        resolve: (summary) => summary.managerPayable,
+        resolve: (summary, _args, ctx) =>
+          isPartner(ctx.user) ? 0n : summary.managerPayable,
       }),
       companyPosition: t.field({
         type: 'Money',
-        resolve: (summary) => summary.companyPosition,
+        resolve: (summary, _args, ctx) =>
+          isOwner(ctx.user) ? summary.companyPosition : 0n,
       }),
       totalBudget: t.field({
         type: 'Money',
-        resolve: (summary) => summary.totalBudget,
+        resolve: (summary, _args, ctx) =>
+          isPartner(ctx.user) ? 0n : summary.totalBudget,
       }),
-      sales: t.field({ type: 'Money', resolve: (summary) => summary.sales }),
-      inStockCount: t.exposeInt('inStockCount'),
-      soldCount: t.exposeInt('soldCount'),
+      capitalTotal: t.field({
+        type: 'Money',
+        resolve: (summary, _args, ctx) =>
+          isPartner(ctx.user) ? 0n : summary.capital,
+      }),
+      companyCapital: t.field({
+        type: 'Money',
+        resolve: (summary, _args, ctx) =>
+          isOwner(ctx.user) ? summary.companyCapital : 0n,
+      }),
+      partnerCapital: t.field({
+        type: 'Money',
+        resolve: (summary, _args, ctx) =>
+          isOwner(ctx.user) ? summary.partnerCapital : 0n,
+      }),
+      myCapital: t.field({
+        type: 'Money',
+        resolve: (summary, _args, ctx) =>
+          viewerStakes(summary, ctx.user).reduce(
+            (sum, partner) => sum + partner.capital,
+            0n,
+          ),
+      }),
+      myCapitalShare: t.field({
+        type: 'Money',
+        resolve: (summary, _args, ctx) =>
+          viewerStakes(summary, ctx.user).reduce(
+            (sum, partner) => sum + partner.profitShare,
+            0n,
+          ),
+      }),
+      myPaid: t.field({
+        type: 'Money',
+        resolve: (summary, _args, ctx) =>
+          viewerStakes(summary, ctx.user).reduce(
+            (sum, partner) => sum + partner.paid,
+            0n,
+          ),
+      }),
+      myPayable: t.field({
+        type: 'Money',
+        resolve: (summary, _args, ctx) =>
+          viewerStakes(summary, ctx.user).reduce(
+            (sum, partner) => sum + partner.payable,
+            0n,
+          ),
+      }),
+      partners: t.field({
+        type: [PartnerStake],
+        resolve: (summary, _args, ctx) =>
+          isOwner(ctx.user) ? summary.partners : [],
+      }),
+      sales: t.field({
+        type: 'Money',
+        resolve: (summary, _args, ctx) =>
+          isPartner(ctx.user) ? 0n : summary.sales,
+      }),
+      inStockCount: t.int({
+        resolve: (summary, _args, ctx) =>
+          isPartner(ctx.user) ? 0 : summary.inStockCount,
+      }),
+      soldCount: t.int({
+        resolve: (summary, _args, ctx) =>
+          isPartner(ctx.user) ? 0 : summary.soldCount,
+      }),
     }),
   })
 
@@ -102,6 +242,24 @@ builder.prismaObject('Cost', {
     description: t.exposeString('description'),
     receiptNumber: t.exposeString('receiptNumber', { nullable: true }),
     spentAt: t.expose('spentAt', { type: 'DateTime' }),
+    paidBy: t.string({
+      nullable: true,
+      select: {
+        partner: { select: { name: true, userId: true } },
+      },
+      resolve: (cost, _args, ctx) => {
+        const partner = cost.partner
+        if (!partner) return null
+        if (isOwner(ctx.user)) return partner.name
+        if (
+          (ctx.user?.role === 'MANAGER' || ctx.user?.role === 'PARTNER') &&
+          partner.userId === ctx.user.id
+        ) {
+          return partner.name
+        }
+        return null
+      },
+    }),
   }),
 })
 
@@ -116,6 +274,35 @@ builder.prismaObject('CapitalEntry', {
     note: t.exposeString('note', { nullable: true }),
     receiptNumber: t.exposeString('receiptNumber', { nullable: true }),
     createdAt: t.expose('createdAt', { type: 'DateTime' }),
+    partner: t.relation('partner', { nullable: true }),
+  }),
+})
+
+builder.prismaObject('Partner', {
+  fields: (t) => ({
+    id: t.exposeID('id'),
+    name: t.exposeString('name'),
+    linked: t.boolean({
+      select: { userId: true },
+      resolve: (partner) => partner.userId != null,
+    }),
+    email: t.string({
+      nullable: true,
+      select: { user: { select: { email: true } } },
+      resolve: (partner, _args, ctx) =>
+        isOwner(ctx.user) ? (partner.user?.email ?? null) : null,
+    }),
+  }),
+})
+
+builder.prismaObject('CarCapitalShare', {
+  fields: (t) => ({
+    id: t.exposeID('id'),
+    amount: t.field({
+      type: 'Money',
+      resolve: (share) => decimalToBigint(share.amount),
+    }),
+    partner: t.relation('partner'),
   }),
 })
 
@@ -129,6 +316,7 @@ builder.prismaObject('Payout', {
     note: t.exposeString('note', { nullable: true }),
     receiptNumber: t.exposeString('receiptNumber', { nullable: true }),
     paidAt: t.expose('paidAt', { type: 'DateTime' }),
+    partner: t.relation('partner', { nullable: true }),
   }),
 })
 
@@ -142,49 +330,83 @@ builder.prismaObject('Car', {
     status: t.expose('status', { type: CarStatusEnum }),
     purchasePrice: t.field({
       type: 'Money',
-      resolve: (car) => decimalToBigint(car.purchasePrice),
+      resolve: (car, _args, ctx) =>
+        isPartner(ctx.user) ? 0n : decimalToBigint(car.purchasePrice),
     }),
     purchasedAt: t.expose('purchasedAt', { type: 'DateTime' }),
-    purchaseReceiptNumber: t.exposeString('purchaseReceiptNumber', {
+    purchaseReceiptNumber: t.string({
       nullable: true,
+      select: { purchaseReceiptNumber: true },
+      resolve: (car, _args, ctx) =>
+        isPartner(ctx.user) ? null : car.purchaseReceiptNumber,
     }),
     salePrice: t.field({
       type: 'Money',
       nullable: true,
-      resolve: (car) =>
-        car.salePrice == null ? null : decimalToBigint(car.salePrice),
+      resolve: (car, _args, ctx) => {
+        if (isPartner(ctx.user) || car.salePrice == null) return null
+        return decimalToBigint(car.salePrice)
+      },
     }),
     soldAt: t.expose('soldAt', { type: 'DateTime', nullable: true }),
-    saleReceiptNumber: t.exposeString('saleReceiptNumber', {
+    saleReceiptNumber: t.string({
       nullable: true,
+      select: { saleReceiptNumber: true },
+      resolve: (car, _args, ctx) =>
+        isPartner(ctx.user) ? null : car.saleReceiptNumber,
     }),
     totalCost: t.field({
       type: 'Money',
       nullable: true,
-      resolve: (car) =>
-        car.totalCost == null ? null : decimalToBigint(car.totalCost),
+      resolve: (car, _args, ctx) => {
+        if (isPartner(ctx.user) || car.totalCost == null) return null
+        return decimalToBigint(car.totalCost)
+      },
     }),
     profit: t.field({
       type: 'Money',
       nullable: true,
-      resolve: (car) =>
-        car.profit == null ? null : decimalToBigint(car.profit),
+      resolve: (car, _args, ctx) => {
+        if (isPartner(ctx.user) || car.profit == null) return null
+        return decimalToBigint(car.profit)
+      },
     }),
     companyShare: t.field({
       type: 'Money',
       nullable: true,
-      resolve: (car) =>
-        car.companyShare == null ? null : decimalToBigint(car.companyShare),
+      resolve: (car, _args, ctx) => {
+        if (!isOwner(ctx.user) || car.companyShare == null) return null
+        return decimalToBigint(car.companyShare)
+      },
     }),
     managerShare: t.field({
       type: 'Money',
       nullable: true,
-      resolve: (car) =>
-        car.managerShare == null ? null : decimalToBigint(car.managerShare),
+      resolve: (car, _args, ctx) => {
+        if (isPartner(ctx.user) || car.managerShare == null) return null
+        return decimalToBigint(car.managerShare)
+      },
     }),
-    note: t.exposeString('note', { nullable: true }),
+    note: t.string({
+      nullable: true,
+      select: { note: true },
+      resolve: (car, _args, ctx) => (isPartner(ctx.user) ? null : car.note),
+    }),
     costs: t.relation('costs', {
-      query: () => ({ orderBy: { spentAt: 'asc' as const } }),
+      query: (_args, ctx) => ({
+        orderBy: { spentAt: 'asc' as const },
+        where: isPartner(ctx.user)
+          ? { partner: { userId: ctx.user?.id } }
+          : undefined,
+      }),
+    }),
+    capitalShares: t.relation('capitalShares', {
+      query: (_args, ctx) => ({
+        where:
+          ctx.user?.role === 'MANAGER' || ctx.user?.role === 'PARTNER'
+            ? { partner: { userId: ctx.user.id } }
+            : undefined,
+      }),
     }),
     cycle: t.relation('cycle'),
   }),
@@ -197,7 +419,8 @@ builder.prismaObject('BudgetCycle', {
     status: t.expose('status', { type: CycleStatusEnum }),
     initialAmount: t.field({
       type: 'Money',
-      resolve: (cycle) => decimalToBigint(cycle.initialAmount),
+      resolve: (cycle, _args, ctx) =>
+        isPartner(ctx.user) ? 0n : decimalToBigint(cycle.initialAmount),
     }),
     openedAt: t.expose('openedAt', { type: 'DateTime' }),
     closedAt: t.expose('closedAt', { type: 'DateTime', nullable: true }),
@@ -206,16 +429,80 @@ builder.prismaObject('BudgetCycle', {
       resolve: (cycle) => loadSummary(prisma, cycle.id),
     }),
     capitalEntries: t.relation('capitalEntries', {
-      query: () => ({ orderBy: { createdAt: 'asc' as const } }),
+      query: (_args, ctx) => ({
+        orderBy: { createdAt: 'asc' as const },
+        where:
+          ctx.user?.role === 'MANAGER' || ctx.user?.role === 'PARTNER'
+            ? { partner: { userId: ctx.user.id } }
+            : undefined,
+      }),
     }),
     payouts: t.relation('payouts', {
-      query: () => ({ orderBy: { paidAt: 'desc' as const } }),
+      query: (_args, ctx) => ({
+        orderBy: { paidAt: 'desc' as const },
+        where:
+          ctx.user?.role === 'MANAGER'
+            ? { partnerId: null }
+            : ctx.user?.role === 'PARTNER'
+              ? { partner: { userId: ctx.user.id } }
+              : undefined,
+      }),
     }),
     cars: t.relation('cars', {
-      query: () => ({ orderBy: { purchasedAt: 'desc' as const } }),
+      query: (_args, ctx) => ({
+        orderBy: { purchasedAt: 'desc' as const },
+        where: isPartner(ctx.user)
+          ? {
+              OR: [
+                {
+                  capitalShares: {
+                    some: { partner: { userId: ctx.user?.id } },
+                  },
+                },
+                { costs: { some: { partner: { userId: ctx.user?.id } } } },
+              ],
+            }
+          : undefined,
+      }),
     }),
   }),
 })
+
+builder.queryField('partners', (t) =>
+  t.prismaField({
+    type: ['Partner'],
+    resolve: async (query, _root, _args, ctx) => {
+      requireOwner(ctx.user)
+      return ctx.prisma.partner.findMany({
+        ...query,
+        orderBy: { name: 'asc' },
+      })
+    },
+  }),
+)
+
+builder.mutationField('grantPartnerAccess', (t) =>
+  t.prismaField({
+    type: 'Partner',
+    args: {
+      partnerId: t.arg.id({ required: true }),
+      email: t.arg.string({ required: true }),
+      password: t.arg.string({ required: true }),
+    },
+    resolve: async (query, _root, args, ctx) => {
+      requireOwner(ctx.user)
+      const id = await grantPartnerAccess({
+        partnerId: args.partnerId,
+        email: args.email,
+        password: args.password,
+      })
+      return ctx.prisma.partner.findUniqueOrThrow({
+        ...query,
+        where: { id },
+      })
+    },
+  }),
+)
 
 builder.queryField('me', (t) =>
   t.field({
@@ -243,10 +530,13 @@ builder.queryField('cycles', (t) =>
   t.prismaField({
     type: ['BudgetCycle'],
     resolve: async (query, _root, _args, ctx) => {
-      requireUser(ctx.user)
+      const user = requireUser(ctx.user)
       return ctx.prisma.budgetCycle.findMany({
         ...query,
-        where: { status: 'CLOSED' },
+        where: {
+          status: 'CLOSED',
+          ...(user.role === 'PARTNER' ? partnerCycleWhere(user.id) : {}),
+        },
         orderBy: { closedAt: 'desc' },
       })
     },
@@ -259,10 +549,16 @@ builder.queryField('cycle', (t) =>
     nullable: true,
     args: { id: t.arg.id({ required: true }) },
     resolve: async (query, _root, args, ctx) => {
-      requireUser(ctx.user)
-      return ctx.prisma.budgetCycle.findUnique({
+      const user = requireUser(ctx.user)
+      if (user.role !== 'PARTNER') {
+        return ctx.prisma.budgetCycle.findUnique({
+          ...query,
+          where: { id: args.id },
+        })
+      }
+      return ctx.prisma.budgetCycle.findFirst({
         ...query,
-        where: { id: args.id },
+        where: { id: args.id, ...partnerCycleWhere(user.id) },
       })
     },
   }),
@@ -274,10 +570,22 @@ builder.queryField('car', (t) =>
     nullable: true,
     args: { id: t.arg.id({ required: true }) },
     resolve: async (query, _root, args, ctx) => {
-      requireUser(ctx.user)
-      return ctx.prisma.car.findUnique({
+      const user = requireUser(ctx.user)
+      if (user.role !== 'PARTNER') {
+        return ctx.prisma.car.findUnique({
+          ...query,
+          where: { id: args.id },
+        })
+      }
+      return ctx.prisma.car.findFirst({
         ...query,
-        where: { id: args.id },
+        where: {
+          id: args.id,
+          OR: [
+            { capitalShares: { some: { partner: { userId: user.id } } } },
+            { costs: { some: { partner: { userId: user.id } } } },
+          ],
+        },
       })
     },
   }),
@@ -290,6 +598,8 @@ builder.mutationField('openCycle', (t) =>
       title: t.arg.string({ required: true }),
       amount: t.arg({ type: 'Money', required: true }),
       receiptNumber: t.arg.string({ required: false }),
+      source: t.arg({ type: FundingSourceEnum, required: false }),
+      partnerName: t.arg.string({ required: false }),
     },
     resolve: async (query, _root, args, ctx) => {
       const user = requireOwner(ctx.user)
@@ -298,6 +608,8 @@ builder.mutationField('openCycle', (t) =>
         title: args.title,
         amount: args.amount,
         receiptNumber: args.receiptNumber,
+        source: args.source ?? 'COMPANY',
+        partnerName: args.partnerName,
       })
       return ctx.prisma.budgetCycle.findUniqueOrThrow({
         ...query,
@@ -315,15 +627,20 @@ builder.mutationField('addExtraMoney', (t) =>
       amount: t.arg({ type: 'Money', required: true }),
       note: t.arg.string({ required: false }),
       receiptNumber: t.arg.string({ required: false }),
+      source: t.arg({ type: FundingSourceEnum, required: false }),
+      partnerName: t.arg.string({ required: false }),
     },
     resolve: async (query, _root, args, ctx) => {
-      const user = requireOwner(ctx.user)
+      const user = requireStaff(ctx.user)
       const id = await addExtraMoney({
         userId: user.id,
+        role: user.role,
         cycleId: args.cycleId,
         amount: args.amount,
         note: args.note,
         receiptNumber: args.receiptNumber,
+        source: args.source ?? 'COMPANY',
+        partnerName: args.partnerName,
       })
       return ctx.prisma.budgetCycle.findUniqueOrThrow({
         ...query,
@@ -346,11 +663,15 @@ builder.mutationField('buyCar', (t) =>
       purchasedAt: t.arg({ type: 'DateTime', required: true }),
       note: t.arg.string({ required: false }),
       receiptNumber: t.arg.string({ required: false }),
+      source: t.arg({ type: FundingSourceEnum, required: false }),
+      partnerName: t.arg.string({ required: false }),
+      fundedAmount: t.arg({ type: 'Money', required: false }),
     },
     resolve: async (query, _root, args, ctx) => {
-      const user = requireUser(ctx.user)
+      const user = requireStaff(ctx.user)
       const id = await buyCar({
         userId: user.id,
+        role: user.role,
         cycleId: args.cycleId,
         title: args.title,
         year: args.year,
@@ -360,6 +681,9 @@ builder.mutationField('buyCar', (t) =>
         purchasedAt: args.purchasedAt,
         note: args.note,
         receiptNumber: args.receiptNumber,
+        source: args.source ?? 'COMPANY',
+        partnerName: args.partnerName,
+        fundedAmount: args.fundedAmount,
       })
       return ctx.prisma.car.findUniqueOrThrow({ ...query, where: { id } })
     },
@@ -376,17 +700,22 @@ builder.mutationField('addCost', (t) =>
       description: t.arg.string({ required: true }),
       spentAt: t.arg({ type: 'DateTime', required: true }),
       receiptNumber: t.arg.string({ required: false }),
+      source: t.arg({ type: FundingSourceEnum, required: false }),
+      partnerName: t.arg.string({ required: false }),
     },
     resolve: async (query, _root, args, ctx) => {
-      const user = requireUser(ctx.user)
+      const user = requireStaff(ctx.user)
       const id = await addCost({
         userId: user.id,
+        role: user.role,
         carId: args.carId,
         category: args.category,
         amount: args.amount,
         description: args.description,
         spentAt: args.spentAt,
         receiptNumber: args.receiptNumber,
+        source: args.source ?? 'COMPANY',
+        partnerName: args.partnerName,
       })
       return ctx.prisma.car.findUniqueOrThrow({ ...query, where: { id } })
     },
@@ -403,7 +732,7 @@ builder.mutationField('sellCar', (t) =>
       receiptNumber: t.arg.string({ required: false }),
     },
     resolve: async (query, _root, args, ctx) => {
-      requireUser(ctx.user)
+      requireStaff(ctx.user)
       const id = await sellCar({
         carId: args.carId,
         salePrice: args.salePrice,
@@ -424,6 +753,7 @@ builder.mutationField('recordPayout', (t) =>
       note: t.arg.string({ required: false }),
       paidAt: t.arg({ type: 'DateTime', required: true }),
       receiptNumber: t.arg.string({ required: false }),
+      partnerId: t.arg.id({ required: false }),
     },
     resolve: async (query, _root, args, ctx) => {
       const user = requireOwner(ctx.user)
@@ -434,6 +764,7 @@ builder.mutationField('recordPayout', (t) =>
         note: args.note,
         paidAt: args.paidAt,
         receiptNumber: args.receiptNumber,
+        partnerId: args.partnerId,
       })
       return ctx.prisma.budgetCycle.findUniqueOrThrow({
         ...query,

@@ -8,11 +8,30 @@ export type CarFigures = {
   managerShare: bigint | null
 }
 
+/** Money already counted inside initialAmount + extraAmount. */
+export type PartnerInput = {
+  id: string
+  name: string
+  isManager: boolean
+  userId?: string | null
+  capital: bigint
+  profitShare: bigint
+  paid: bigint
+}
+
+export type PartnerSummary = PartnerInput & {
+  payable: bigint
+}
+
+export const companyStakeKey = 'company'
+
 export type SummaryInput = {
   initialAmount: bigint
   extraAmount: bigint
   cars: CarFigures[]
+  /** Payouts of the sales manager's combined share. Partner payouts are on each partner. */
   payouts: bigint
+  partners?: PartnerInput[]
 }
 
 export type Summary = {
@@ -29,6 +48,9 @@ export type Summary = {
   managerShare: bigint
   managerPayable: bigint
   companyPosition: bigint
+  companyCapital: bigint
+  partnerCapital: bigint
+  partners: PartnerSummary[]
   inStockCount: number
   soldCount: number
 }
@@ -58,6 +80,56 @@ export function splitProfit(profit: bigint): {
   }
   const companyShare = (profit * 60n) / 100n
   return { companyShare, managerShare: profit - companyShare }
+}
+
+/**
+ * Company keeps the whole 60% pool when nobody else put money in.
+ * Otherwise that pool is split by capital. The sales commission stays 40%
+ * and is not part of the pool. Remainder tomans stay with the company.
+ * A loss stays with the company when nobody else put money in.
+ */
+export function sharesForSale(
+  profit: bigint,
+  stakes: { key: string; capital: bigint }[],
+): {
+  salesShare: bigint
+  companyShare: bigint
+  partnerShares: { key: string; amount: bigint }[]
+} {
+  const base = splitProfit(profit)
+  const holders = stakes.filter(
+    (stake) => stake.key !== companyStakeKey && stake.capital > 0n,
+  )
+  const total = stakes.reduce(
+    (sum, stake) => sum + (stake.capital > 0n ? stake.capital : 0n),
+    0n,
+  )
+  if (total <= 0n || holders.length === 0) {
+    return {
+      salesShare: base.managerShare,
+      companyShare: base.companyShare,
+      partnerShares: [],
+    }
+  }
+  const partnerShares = holders.map((stake) => ({
+    key: stake.key,
+    amount: (base.companyShare * stake.capital) / total,
+  }))
+  const given = partnerShares.reduce((sum, share) => sum + share.amount, 0n)
+  return {
+    salesShare: base.managerShare,
+    companyShare: base.companyShare - given,
+    partnerShares,
+  }
+}
+
+export function personalMoneyShare(
+  profit: bigint,
+  myCapital: bigint,
+  capitalTotal: bigint,
+): bigint {
+  if (myCapital <= 0n || capitalTotal <= 0n) return 0n
+  return (splitProfit(profit).companyShare * myCapital) / capitalTotal
 }
 
 export function carResult(
@@ -91,8 +163,12 @@ export function companyPosition(cash: bigint, payable: bigint): bigint {
 }
 
 /** The company gets the whole budget back plus its profit share. Costs already inside the budget are not subtracted again. */
-export function companyTake(totalBudget: bigint, companyShare: bigint): bigint {
-  return totalBudget + companyShare
+export function companyTake(
+  totalBudget: bigint,
+  companyShare: bigint,
+  partnerCapital = 0n,
+): bigint {
+  return totalBudget - partnerCapital + companyShare
 }
 
 /** An expense the manager records was already on the card, so it stays inside the total budget. */
@@ -196,15 +272,36 @@ export function summarize(input: SummaryInput): Summary {
     managerShare += car.managerShare ?? 0n
   }
 
+  const partners = input.partners ?? []
+  const partnerCapital = partners.reduce(
+    (sum, partner) => sum + partner.capital,
+    0n,
+  )
+  const partnerPayouts = partners.reduce(
+    (sum, partner) => sum + partner.paid,
+    0n,
+  )
+  const managerCapitalShare = partners.reduce(
+    (sum, partner) => sum + (partner.isManager ? partner.profitShare : 0n),
+    0n,
+  )
+  const otherUnpaid = partners.reduce(
+    (sum, partner) =>
+      sum + (partner.isManager ? 0n : partner.profitShare - partner.paid),
+    0n,
+  )
   const capital = input.initialAmount + input.extraAmount
   const cash = availableCash({
     capital,
     purchases,
     costs,
     sales,
-    payouts: input.payouts,
+    payouts: input.payouts + partnerPayouts,
   })
-  const payable = managerPayable(managerShare, input.payouts)
+  const payable = managerPayable(
+    managerShare + managerCapitalShare,
+    input.payouts,
+  )
 
   return {
     initialAmount: input.initialAmount,
@@ -219,7 +316,16 @@ export function summarize(input: SummaryInput): Summary {
     companyShare,
     managerShare,
     managerPayable: payable,
-    companyPosition: companyPosition(cash, payable),
+    companyPosition: companyPosition(
+      cash,
+      payable + otherUnpaid + partnerCapital,
+    ),
+    companyCapital: capital - partnerCapital,
+    partnerCapital,
+    partners: partners.map((partner) => ({
+      ...partner,
+      payable: partner.profitShare - partner.paid,
+    })),
     inStockCount,
     soldCount,
   }

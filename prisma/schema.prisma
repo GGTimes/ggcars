@@ -17,6 +17,7 @@ datasource db {
 enum Role {
   OWNER
   MANAGER
+  PARTNER
 }
 
 enum CycleStatus {
@@ -53,6 +54,7 @@ model User {
   carsBought     Car[]          @relation("CarBoughtBy")
   costs          Cost[]
   payouts        Payout[]
+  partner        Partner?
 }
 
 /// One budget round. Amounts are whole Iranian Toman.
@@ -80,11 +82,15 @@ model CapitalEntry {
   amount        Decimal     @db.Decimal(18, 0)
   note          String?
   receiptNumber String?
+  /// Null means this money belongs to the company. Existing rows stay null.
+  partnerId     String?
+  partner       Partner?    @relation(fields: [partnerId], references: [id], onDelete: Restrict)
   createdById   String
   createdBy     User        @relation(fields: [createdById], references: [id])
   createdAt     DateTime    @default(now())
 
   @@index([cycleId])
+  @@index([partnerId])
 }
 
 model Car {
@@ -109,9 +115,10 @@ model Car {
   managerShare          Decimal?    @db.Decimal(18, 0)
   note                  String?
   boughtById            String
-  boughtBy              User        @relation("CarBoughtBy", fields: [boughtById], references: [id])
+  boughtBy              User              @relation("CarBoughtBy", fields: [boughtById], references: [id])
   costs                 Cost[]
-  createdAt             DateTime    @default(now())
+  capitalShares         CarCapitalShare[]
+  createdAt             DateTime          @default(now())
 
   @@index([cycleId])
   @@index([status])
@@ -125,12 +132,16 @@ model Cost {
   amount        Decimal      @db.Decimal(18, 0)
   description   String
   receiptNumber String?
+  /// Null means the company card paid. Existing rows stay null.
+  partnerId     String?
+  partner       Partner?     @relation(fields: [partnerId], references: [id], onDelete: Restrict)
   spentAt       DateTime
   createdById   String
   createdBy     User         @relation(fields: [createdById], references: [id])
   createdAt     DateTime     @default(now())
 
   @@index([carId])
+  @@index([partnerId])
 }
 
 model Payout {
@@ -140,10 +151,41 @@ model Payout {
   amount        Decimal     @db.Decimal(18, 0)
   note          String?
   receiptNumber String?
+  /// Null means a payout of the sales manager's combined share. Existing rows stay null.
+  partnerId     String?
+  partner       Partner?    @relation(fields: [partnerId], references: [id], onDelete: Restrict)
   paidAt        DateTime
   createdById   String
   createdBy     User        @relation(fields: [createdById], references: [id])
   createdAt     DateTime    @default(now())
 
   @@index([cycleId])
+  @@index([partnerId])
+}
+
+/// A person other than the company who put money into a cycle.
+/// Linked to the sales-manager account when that person can sign in.
+model Partner {
+  id             String            @id @default(uuid())
+  name           String
+  userId         String?           @unique
+  user           User?             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  createdAt      DateTime          @default(now())
+  capitalEntries CapitalEntry[]
+  payouts        Payout[]
+  carShares      CarCapitalShare[]
+  costs          Cost[]
+}
+
+/// Frozen slice of one car's profit for someone who put in money. Company stays on Car.companyShare.
+model CarCapitalShare {
+  id        String  @id @default(uuid())
+  carId     String
+  car       Car     @relation(fields: [carId], references: [id], onDelete: Cascade)
+  partnerId String
+  partner   Partner @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+  amount    Decimal @db.Decimal(18, 0)
+
+  @@unique([carId, partnerId])
+  @@index([partnerId])
 }

@@ -1,5 +1,20 @@
 export type Money = string
 
+export type PartnerStake = {
+  id: string
+  name: string
+  isManager: boolean
+  capital: Money
+  profitShare: Money
+  paid: Money
+  payable: Money
+}
+
+export type CapitalShare = {
+  amount: Money
+  partner: { id: string; name: string }
+}
+
 export type CycleSummary = {
   initialAmount: Money
   extraAmount: Money
@@ -10,6 +25,14 @@ export type CycleSummary = {
   managerPayable: Money
   companyPosition: Money
   totalBudget: Money
+  capitalTotal: Money
+  companyCapital: Money
+  partnerCapital: Money
+  myCapital: Money
+  myCapitalShare: Money
+  myPaid: Money
+  myPayable: Money
+  partners: PartnerStake[]
   sales: Money
   inStockCount: number
   soldCount: number
@@ -22,6 +45,7 @@ export type CapitalEntry = {
   note: string | null
   receiptNumber: string | null
   createdAt: string
+  partner: { id: string; name: string } | null
 }
 
 export type Payout = {
@@ -30,6 +54,7 @@ export type Payout = {
   note: string | null
   receiptNumber: string | null
   paidAt: string
+  partner: { id: string; name: string } | null
 }
 
 export type CarListItem = {
@@ -51,6 +76,7 @@ export type CarListItem = {
   managerShare: Money | null
   note: string | null
   costs: { amount: Money }[]
+  capitalShares: CapitalShare[]
 }
 
 export type CycleData = {
@@ -73,6 +99,7 @@ export type CostItem = {
   description: string
   receiptNumber: string | null
   spentAt: string
+  paidBy: string | null
 }
 
 export type CarDetail = {
@@ -94,11 +121,23 @@ export type CarDetail = {
   companyShare: Money | null
   managerShare: Money | null
   costs: CostItem[]
+  capitalShares: CapitalShare[]
   cycle: {
     id: string
     title: string
     status: 'OPEN' | 'CLOSED'
-    summary: { cash: Money }
+    summary: {
+      cash: Money
+      capitalTotal: Money
+      companyCapital: Money
+      myCapital: Money
+      partners: {
+        id: string
+        name: string
+        capital: Money
+        isManager: boolean
+      }[]
+    }
   }
 }
 
@@ -115,6 +154,8 @@ export type CycleListItem = {
     | 'cash'
     | 'companyShare'
     | 'managerPayable'
+    | 'myCapital'
+    | 'myPayable'
     | 'inStockCount'
     | 'soldCount'
   >

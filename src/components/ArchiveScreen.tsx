@@ -8,11 +8,14 @@ import { formatJalaliIso } from '@/lib/jalali'
 import type { CycleData, CycleListItem } from '@/types/api'
 import { CycleScreen } from './CycleScreen'
 import { MoneyText } from './MoneyText'
+import { PartnerScreen } from './PartnerScreen'
 import { QueryState } from './QueryState'
+import { useSession } from './session'
 
 export function ArchiveScreen() {
   const t = useTranslations('archive')
   const dash = useTranslations('dashboard')
+  const { role } = useSession()
   const { data, loading, error } = useQuery<{ cycles: CycleListItem[] }>(
     CYCLES,
     {
@@ -52,30 +55,57 @@ export function ArchiveScreen() {
               <span className="text-sm text-leaf">{t('view')}</span>
             </div>
             <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
-              <div>
-                <dt className="text-ink/50">{dash('budget')}</dt>
-                <dd>
-                  <MoneyText
-                    value={cycle.summary.initialAmount}
-                    tone="neutral"
-                  />
-                </dd>
-              </div>
-              <div>
-                <dt className="text-ink/50">{dash('company')}</dt>
-                <dd>
-                  <MoneyText value={cycle.summary.companyShare} />
-                </dd>
-              </div>
-              <div>
-                <dt className="text-ink/50">{dash('payable')}</dt>
-                <dd>
-                  <MoneyText
-                    value={cycle.summary.managerPayable}
-                    tone="neutral"
-                  />
-                </dd>
-              </div>
+              {role === 'PARTNER' ? (
+                <>
+                  <div>
+                    <dt className="text-ink/50">{dash('myCapital')}</dt>
+                    <dd>
+                      <MoneyText
+                        value={cycle.summary.myCapital}
+                        tone="neutral"
+                      />
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-ink/50">{dash('myPayable')}</dt>
+                    <dd>
+                      <MoneyText
+                        value={cycle.summary.myPayable}
+                        tone="neutral"
+                      />
+                    </dd>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <dt className="text-ink/50">{dash('budget')}</dt>
+                    <dd>
+                      <MoneyText
+                        value={cycle.summary.initialAmount}
+                        tone="neutral"
+                      />
+                    </dd>
+                  </div>
+                  {role === 'OWNER' ? (
+                    <div>
+                      <dt className="text-ink/50">{dash('company')}</dt>
+                      <dd>
+                        <MoneyText value={cycle.summary.companyShare} />
+                      </dd>
+                    </div>
+                  ) : null}
+                  <div>
+                    <dt className="text-ink/50">{dash('payable')}</dt>
+                    <dd>
+                      <MoneyText
+                        value={cycle.summary.managerPayable}
+                        tone="neutral"
+                      />
+                    </dd>
+                  </div>
+                </>
+              )}
             </dl>
           </Link>
         ))
@@ -87,6 +117,7 @@ export function ArchiveScreen() {
 export function CycleDetailScreen({ id }: { id: string }) {
   const t = useTranslations('archive')
   const dash = useTranslations('dashboard')
+  const { role } = useSession()
   const { data, loading, error } = useQuery<{ cycle: CycleData | null }>(
     CYCLE,
     {
@@ -108,6 +139,8 @@ export function CycleDetailScreen({ id }: { id: string }) {
       </div>
     )
   }
+
+  if (role === 'PARTNER') return <PartnerScreen cycle={data.cycle} />
 
   return <CycleScreen cycle={data.cycle} allowEdits={false} />
 }

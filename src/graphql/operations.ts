@@ -18,6 +18,22 @@ const CYCLE_FIELDS = gql`
       managerPayable
       companyPosition
       totalBudget
+      capitalTotal
+      companyCapital
+      partnerCapital
+      myCapital
+      myCapitalShare
+      myPaid
+      myPayable
+      partners {
+        id
+        name
+        isManager
+        capital
+        profitShare
+        paid
+        payable
+      }
       sales
       inStockCount
       soldCount
@@ -29,6 +45,10 @@ const CYCLE_FIELDS = gql`
       note
       receiptNumber
       createdAt
+      partner {
+        id
+        name
+      }
     }
     payouts {
       id
@@ -36,6 +56,10 @@ const CYCLE_FIELDS = gql`
       note
       receiptNumber
       paidAt
+      partner {
+        id
+        name
+      }
     }
     cars {
       id
@@ -57,6 +81,13 @@ const CYCLE_FIELDS = gql`
       note
       costs {
         amount
+      }
+      capitalShares {
+        amount
+        partner {
+          id
+          name
+        }
       }
     }
   }
@@ -85,6 +116,8 @@ export const CYCLES: DocumentNode = gql`
         cash
         companyShare
         managerPayable
+        myCapital
+        myPayable
         inStockCount
         soldCount
       }
@@ -128,6 +161,14 @@ export const CAR_QUERY: DocumentNode = gql`
         description
         receiptNumber
         spentAt
+        paidBy
+      }
+      capitalShares {
+        amount
+        partner {
+          id
+          name
+        }
       }
       cycle {
         id
@@ -135,6 +176,15 @@ export const CAR_QUERY: DocumentNode = gql`
         status
         summary {
           cash
+          capitalTotal
+          companyCapital
+          myCapital
+          partners {
+            id
+            name
+            capital
+            isManager
+          }
         }
       }
     }
@@ -142,17 +192,54 @@ export const CAR_QUERY: DocumentNode = gql`
 `
 
 export const OPEN_CYCLE: DocumentNode = gql`
-  mutation OpenCycle($title: String!, $amount: Money!, $receiptNumber: String) {
-    openCycle(title: $title, amount: $amount, receiptNumber: $receiptNumber) {
+  mutation OpenCycle(
+    $title: String!
+    $amount: Money!
+    $receiptNumber: String
+    $source: FundingSource
+    $partnerName: String
+  ) {
+    openCycle(
+      title: $title
+      amount: $amount
+      receiptNumber: $receiptNumber
+      source: $source
+      partnerName: $partnerName
+    ) {
       id
     }
   }
 `
 
 export const ADD_EXTRA: DocumentNode = gql`
-  mutation AddExtraMoney($cycleId: ID!, $amount: Money!, $note: String, $receiptNumber: String) {
-    addExtraMoney(cycleId: $cycleId, amount: $amount, note: $note, receiptNumber: $receiptNumber) {
+  mutation AddExtraMoney(
+    $cycleId: ID!
+    $amount: Money!
+    $note: String
+    $receiptNumber: String
+    $source: FundingSource
+    $partnerName: String
+  ) {
+    addExtraMoney(
+      cycleId: $cycleId
+      amount: $amount
+      note: $note
+      receiptNumber: $receiptNumber
+      source: $source
+      partnerName: $partnerName
+    ) {
       id
+    }
+  }
+`
+
+export const PARTNERS: DocumentNode = gql`
+  query Partners {
+    partners {
+      id
+      name
+      linked
+      email
     }
   }
 `
@@ -168,6 +255,9 @@ export const BUY_CAR: DocumentNode = gql`
     $purchasedAt: DateTime!
     $note: String
     $receiptNumber: String
+    $source: FundingSource
+    $partnerName: String
+    $fundedAmount: Money
   ) {
     buyCar(
       cycleId: $cycleId
@@ -179,6 +269,9 @@ export const BUY_CAR: DocumentNode = gql`
       purchasedAt: $purchasedAt
       note: $note
       receiptNumber: $receiptNumber
+      source: $source
+      partnerName: $partnerName
+      fundedAmount: $fundedAmount
     ) {
       id
     }
@@ -193,6 +286,8 @@ export const ADD_COST: DocumentNode = gql`
     $description: String!
     $spentAt: DateTime!
     $receiptNumber: String
+    $source: FundingSource
+    $partnerName: String
   ) {
     addCost(
       carId: $carId
@@ -201,6 +296,8 @@ export const ADD_COST: DocumentNode = gql`
       description: $description
       spentAt: $spentAt
       receiptNumber: $receiptNumber
+      source: $source
+      partnerName: $partnerName
     ) {
       id
     }
@@ -216,8 +313,22 @@ export const SELL_CAR: DocumentNode = gql`
 `
 
 export const RECORD_PAYOUT: DocumentNode = gql`
-  mutation RecordPayout($cycleId: ID!, $amount: Money!, $note: String, $paidAt: DateTime!, $receiptNumber: String) {
-    recordPayout(cycleId: $cycleId, amount: $amount, note: $note, paidAt: $paidAt, receiptNumber: $receiptNumber) {
+  mutation RecordPayout(
+    $cycleId: ID!
+    $amount: Money!
+    $note: String
+    $paidAt: DateTime!
+    $receiptNumber: String
+    $partnerId: ID
+  ) {
+    recordPayout(
+      cycleId: $cycleId
+      amount: $amount
+      note: $note
+      paidAt: $paidAt
+      receiptNumber: $receiptNumber
+      partnerId: $partnerId
+    ) {
       id
     }
   }
@@ -273,6 +384,24 @@ export const CLOSE_CYCLE: DocumentNode = gql`
   mutation CloseCycle($cycleId: ID!) {
     closeCycle(cycleId: $cycleId) {
       id
+    }
+  }
+`
+
+export const GRANT_PARTNER_ACCESS: DocumentNode = gql`
+  mutation GrantPartnerAccess(
+    $partnerId: ID!
+    $email: String!
+    $password: String!
+  ) {
+    grantPartnerAccess(
+      partnerId: $partnerId
+      email: $email
+      password: $password
+    ) {
+      id
+      linked
+      email
     }
   }
 `

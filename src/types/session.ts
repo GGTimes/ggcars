@@ -1,4 +1,4 @@
-export type Role = 'OWNER' | 'MANAGER'
+export type Role = 'OWNER' | 'MANAGER' | 'PARTNER'
 
 export type SessionUser = {
   id: string

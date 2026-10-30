@@ -6,6 +6,7 @@ import { CURRENT_CYCLE } from '@/graphql/operations'
 import type { CycleData } from '@/types/api'
 import { CycleScreen } from './CycleScreen'
 import { OpenCycleForm } from './ledger-forms'
+import { PartnerScreen } from './PartnerScreen'
 import { QueryState } from './QueryState'
 import { useSession } from './session'
 
@@ -31,13 +32,19 @@ export function DashboardScreen() {
             {t('emptyTitle')}
           </h1>
           <p className="mt-2 text-sm text-ink/60">
-            {role === 'OWNER' ? t('emptyOwner') : t('emptyManager')}
+            {role === 'OWNER'
+              ? t('emptyOwner')
+              : role === 'PARTNER'
+                ? t('emptyPartner')
+                : t('emptyManager')}
           </p>
         </div>
         {role === 'OWNER' ? <OpenCycleForm /> : null}
       </div>
     )
   }
+
+  if (role === 'PARTNER') return <PartnerScreen cycle={cycle} />
 
   return <CycleScreen cycle={cycle} allowEdits />
 }
