@@ -87,7 +87,9 @@ export function CycleScreen({
     awaitRefetchQueries: true,
   })
   const payable = BigInt(cycle.summary.managerPayable)
-  const companyPrincipal = BigInt(cycle.summary.companyCapital)
+  // Uncovered costs sit in the total budget. They belong to the company's principal.
+  const companyPrincipal =
+    BigInt(cycle.summary.totalBudget) - BigInt(cycle.summary.partnerCapital)
   const companyProfit = BigInt(cycle.summary.companyShare)
   const companyTotal = companyPrincipal + companyProfit
   const inventoryCost = BigInt(cycle.summary.inventoryCost)
