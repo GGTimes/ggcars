@@ -154,6 +154,9 @@ export function CarScreen({ id }: { id: string }) {
           <p className="mt-1 text-xl font-semibold">
             <MoneyText value={costsTotal} tone="neutral" />
           </p>
+          {costsTotal > 0n ? (
+            <p className="mt-2 text-xs text-ink/50">{t('costPrincipal')}</p>
+          ) : null}
         </article>
         {car.status === 'SOLD' && car.salePrice != null ? (
           <article className="card stat-card border-gold/25">
@@ -190,6 +193,7 @@ export function CarScreen({ id }: { id: string }) {
                 <dd className="text-lg font-semibold">
                   <MoneyText value={car.profit} />
                 </dd>
+                <p className="mt-1 text-xs text-ink/45">{t('profitHint')}</p>
               </div>
               {role === 'OWNER' ? (
                 <div>

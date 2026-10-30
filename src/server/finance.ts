@@ -281,13 +281,22 @@ export function summarize(input: SummaryInput): Summary {
     (sum, partner) => sum + partner.paid,
     0n,
   )
+  const managerCapital = partners.reduce(
+    (sum, partner) => sum + (partner.isManager ? partner.capital : 0n),
+    0n,
+  )
   const managerCapitalShare = partners.reduce(
     (sum, partner) => sum + (partner.isManager ? partner.profitShare : 0n),
     0n,
   )
-  const otherUnpaid = partners.reduce(
+  // Principal, including expenses a person paid, is returned with their profit.
+  // Car profit already sets those expenses aside, so they are not paid twice.
+  const otherPayable = partners.reduce(
     (sum, partner) =>
-      sum + (partner.isManager ? 0n : partner.profitShare - partner.paid),
+      sum +
+      (partner.isManager
+        ? 0n
+        : partner.capital + partner.profitShare - partner.paid),
     0n,
   )
   const capital = input.initialAmount + input.extraAmount
@@ -299,7 +308,7 @@ export function summarize(input: SummaryInput): Summary {
     payouts: input.payouts + partnerPayouts,
   })
   const payable = managerPayable(
-    managerShare + managerCapitalShare,
+    managerShare + managerCapital + managerCapitalShare,
     input.payouts,
   )
 
@@ -316,15 +325,12 @@ export function summarize(input: SummaryInput): Summary {
     companyShare,
     managerShare,
     managerPayable: payable,
-    companyPosition: companyPosition(
-      cash,
-      payable + otherUnpaid + partnerCapital,
-    ),
+    companyPosition: companyPosition(cash, payable + otherPayable),
     companyCapital: capital - partnerCapital,
     partnerCapital,
     partners: partners.map((partner) => ({
       ...partner,
-      payable: partner.profitShare - partner.paid,
+      payable: partner.capital + partner.profitShare - partner.paid,
     })),
     inStockCount,
     soldCount,

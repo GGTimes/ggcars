@@ -105,7 +105,6 @@ describe('sharesForSale', () => {
       shares.companyShare + shares.salesShare + shares.partnerShares[0].amount,
     ).toBe(-200n)
   })
-
 })
 
 describe('carResult', () => {
@@ -312,6 +311,39 @@ describe('summarize', () => {
     expect(funded.managerShare).toBe(160n)
   })
 
+  it('returns a shareholder’s expense with their profit and does not pay it twice', () => {
+    const summary = summarize({
+      initialAmount: 800n,
+      extraAmount: 20n,
+      payouts: 0n,
+      cars: [
+        {
+          purchasePrice: 600n,
+          costs: 20n,
+          salePrice: 900n,
+          companyShare: 164n,
+          managerShare: 112n,
+        },
+      ],
+      partners: [
+        {
+          id: 'shareholder',
+          name: 'سهامدار',
+          isManager: false,
+          capital: 20n,
+          profitShare: 4n,
+          paid: 0n,
+        },
+      ],
+    })
+
+    expect(summary.cash).toBe(1100n)
+    expect(summary.partners[0]?.payable).toBe(24n)
+    expect(summary.managerPayable).toBe(112n)
+    expect(summary.companyPosition).toBe(964n)
+    expect(summary.companyCapital + summary.companyShare).toBe(964n)
+  })
+
   it('pays the manager for sales and for money, and leaves other principal with them', () => {
     const summary = summarize({
       initialAmount: 1000n,
@@ -347,7 +379,8 @@ describe('summarize', () => {
     })
 
     expect(summary.cash).toBe(1300n)
-    expect(summary.managerPayable).toBe(90n)
+    expect(summary.managerPayable).toBe(190n)
+    expect(summary.partners[0]?.payable).toBe(110n)
     expect(summary.companyCapital).toBe(1000n)
     expect(summary.partnerCapital).toBe(100n)
     expect(summary.companyPosition).toBe(1100n)
